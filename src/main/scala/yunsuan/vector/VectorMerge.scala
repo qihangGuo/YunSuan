@@ -381,7 +381,7 @@ class VectorDataMergeUnit(val vlen: Int) extends Module with VectorConfig {
     )
   )
 
-  val srcMask8b = Fill(VLENB, vm) & srcMaskVlen.toVf8Vec(vdIdx)
+  val srcMask8b = Fill(VLENB, vm) | srcMaskVlen.toVf8Vec(vdIdx)
 
   val activeMask8b   = bodyMask8b & srcMask8b
   val inactiveMask8b = bodyMask8b & (~srcMask8b).asUInt
