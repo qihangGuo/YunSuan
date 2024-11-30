@@ -29,6 +29,10 @@ object Common {
 
     def VecE64: Vec[UInt] = Vec(vlen / 64, UInt(64.W))
 
+    def UIntVlenb: UInt = UInt(VLENB.W)
+
+    def Vlenb1s = Fill(VLENB, 1.U(1.W))
+
     def VdIdx: UInt = UInt(VdIdxWidth.W)
   }
 
@@ -203,15 +207,22 @@ object Common {
   implicit def caseToVecUtilType[T <: Data](v: Vec[T]): VecUtilType[T] = new VecUtilType[T](v)
 
   class UIntUtil(val uint: UInt) {
+    def this(bits: Bits) = this(bits.asUInt)
+
     val length = uint.getWidth
 
     def drop(n: Int): UInt = {
       require(n < length, s"Can not drop $n bits, since the operand is $length bits width")
       uint(length - 1, n)
     }
+
+    def &>(b: Bool): UInt = {
+      Mux(b, uint, 0.U)
+    }
   }
 
   implicit def caseToUIntUtil(uint: UInt): UIntUtil = new UIntUtil(uint)
+  implicit def caseToUIntUtil(bits: Bits): UIntUtil = new UIntUtil(bits)
 
   def Mux1HValidIO[T <: Data](seq: Seq[ValidIO[T]]): ValidIO[T] = {
     val valid = ParallelOR(seq.map(_.valid))

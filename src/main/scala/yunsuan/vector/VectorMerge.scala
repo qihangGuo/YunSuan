@@ -58,7 +58,8 @@ object VectorMergeEncode {
   // vmv1r.v, vmv2r.v, vmv4r.v, vmv8r.v
   val vmvnr_v    = LiteralCat(Type.VMV,    b"1")
 
-  val vmerge_uop = LiteralCat(Type.VMERGE_UOP, b"00000")
+  val vmerge_uop  = LiteralCat(Type.VMERGE_UOP, b"00000")
+  val vmmerge_uop = LiteralCat(Type.VMERGE_UOP, b"11111")
 
   def is(enum: Type.type => UInt)(uint: UInt): Bool = Type.is(enum)(uint)
 
@@ -111,7 +112,11 @@ class VectorMerge(val vlen: Int) extends Module with VectorConfig {
   val isVMV_V_V     = isTypeVMV    && op === VectorMergeEncode.vmv_v_v
   val isVMVNR_V     = isTypeVMV    && op === VectorMergeEncode.vmvnr_v
 
+  val isVMERGE_UOP  = isTypeMergeUop && op === VectorMergeEncode.vmerge_uop
+  val isVMMERGE_UOP = isTypeMergeUop && op === VectorMergeEncode.vmmerge_uop
+
   val mergeMod = Module(new VectorDataMergeUnit(vlen))
+  val mmergeMod = Module(new VectorMaskDataMergeUnit(vlen))
 
   val vs1E8Vec  = vs1.to8bitVec
   val vs1E16Vec = vs1.to16bitVec
@@ -255,7 +260,7 @@ class VectorMerge(val vlen: Int) extends Module with VectorConfig {
       Fill(vlen / 32, vs1.to32bitVec(0)),
       Fill(vlen / 64, vs1.to64bitVec(0)),
     )),
-    (isVMERGE_V || isTypeMergeUop) -> vs1,
+    (isVMERGE_V || isVMERGE_UOP || isVMMERGE_UOP) -> vs1,
     (isTypeO2V) -> o2vVd.asUInt,
     (isTypeVEXT) -> vextVd.asUInt,
     (isTypeVMSIC) -> vidVd.asUInt,
@@ -264,7 +269,7 @@ class VectorMerge(val vlen: Int) extends Module with VectorConfig {
   val mergeModVl = Mux(isO2V_S, Mux(vl === 0.U, 0.U, 1.U), vl)
   val mergeModVm = Mux(isTypeVMerge || isTypeO2V || isTypeVMV, true.B, io.in.bits.vm)
 
-  mergeMod.io.in.valid := isTypeVMerge || isTypeO2V || isTypeVEXT || isTypeVMSIC || isTypeMergeUop
+  mergeMod.io.in.valid := isTypeVMerge || isTypeO2V || isTypeVEXT || isTypeVMSIC || isVMERGE_UOP
   mergeMod.io.in.bits match {
     case bits =>
       bits.vdIdx    := mergeVdIdx
@@ -279,15 +284,29 @@ class VectorMerge(val vlen: Int) extends Module with VectorConfig {
       bits.vma      := io.in.bits.vma
   }
 
+  val mmergeNewVd = vs1
+  val mmergeOldVd = vs2
+
+  mmergeMod.io.in.valid := isVMMERGE_UOP
+  mmergeMod.io.in.bits match {
+    case bits =>
+      bits.newVd := mmergeNewVd
+      bits.oldVd := mmergeOldVd
+      bits.srcMask := io.in.bits.srcMask
+      bits.vl := vl
+      bits.dveew := io.in.bits.dveew
+      bits.vm := io.in.bits.vm
+      bits.vma := io.in.bits.vma
+  }
+
   io.out.valid := io.in.valid
-  io.out.bits.vd := MuxCase(
-    mergeMod.io.out.bits.vd,
-    Seq(
-      isVMVNR_V -> vdVmvNR,
-      vlIsZero  -> oldVd,
-      isVMV_V_V -> vdVmvVV,
-    )
-  )
+  io.out.bits.vd := Mux1H(Seq(
+    mergeMod.io.out.valid -> mergeMod.io.out.bits.vd,
+    mmergeMod.io.out.valid -> mmergeMod.io.out.bits.vd,
+    isVMVNR_V -> vdVmvNR,
+    vlIsZero -> oldVd,
+    isVMV_V_V -> vdVmvVV,
+  ))
   io.out.bits.fp := v2fData
   io.out.bits.gp := v2xData
 
@@ -413,6 +432,193 @@ class VectorDataMergeUnit(val vlen: Int) extends Module with VectorConfig {
   dontTouch(inactiveMask8b)
   dontTouch(tailMask8b)
   dontTouch(eewOH)
+}
+
+class VectorMaskMergeUnit(val vlen: Int) extends Module with VectorConfig {
+  val io = IO(new Bundle {
+    val in = Input(ValidIO(new Bundle {
+      val uopIdx  = UInt(3.W)
+      // new bits should be located at the right offset in VLENB width
+      val newVdm  = UIntVlenb
+      val oldVdm  = UIntVlenb
+      // already handle vm in caller module
+      val vmaskm  = UIntVlenb
+      val vl      = UInt(VlWidth.W)
+      // data veew
+      val dveew   = VSew()
+      val dveewOH = SewOH()
+      val vma     = Bool()
+    }))
+    val out = Output(ValidIO(new Bundle {
+      val mergedMask = UIntVlenb
+      val maskInWindow = UIntVlenb
+    }))
+  })
+
+  val valid   = io.in.valid
+  val newVdm  = io.in.bits.newVdm
+  val oldVdm  = io.in.bits.oldVdm
+  val vmaskm  = io.in.bits.vmaskm
+  val uopIdx  = io.in.bits.uopIdx
+  val dveew   = io.in.bits.dveew
+  val eewOH   = io.in.bits.dveewOH
+  val vl      = io.in.bits.vl
+  val vma     = io.in.bits.vma
+
+  val uv0Mask  = vmaskm
+
+  val fillE8Mask1s  = Fill(vlen / 8, 1.U(1.W))
+  val fillE8Mask0s  = 0.U((vlen / 8).W)
+
+  // hold 0~8, when vl = VLEN, vlUopIdx = 8
+  val vlUopIdx = Mux1H(eewOH, Seq(
+    vl.drop(ElemIdxWidth),
+    vl.drop(ElemIdxWidth - 1),
+    vl.drop(ElemIdxWidth - 2),
+    vl.drop(ElemIdxWidth - 3),
+  )).take(4)
+
+  // when vlen = 128, hold 0~16
+  val uvl = vl.take(ElemIdxWidth)
+  // When vlen = 128, uvlMask and usrcMask is 16 bits width.
+  // If SEW = 64, only lowest 2 bits are used and meaningful.
+  val uvlMask: UInt = Mux1H(Seq(
+    (vlUopIdx >   uopIdx) -> fillE8Mask1s,
+    (vlUopIdx === uopIdx) -> Cat((0 until VLENB).map(i => i.U < uvl).reverse),
+    (vlUopIdx <   uopIdx) -> fillE8Mask0s,
+  ))
+
+  val windowMask: UInt = Mux1H(eewOH, Seq(
+    Cat((0 until VLENB).map(i => (i * 1 / VLENB).U === 0.U).reverse), // fillE8Mask1s,
+    Cat((0 until VLENB).map(i => (i * 2 / VLENB).U === uopIdx.take(1)).reverse),
+    Cat((0 until VLENB).map(i => (i * 4 / VLENB).U === uopIdx.take(2)).reverse),
+    Cat((0 until VLENB).map(i => (i * 8 / VLENB).U === uopIdx.take(3)).reverse),
+  ))
+
+  val vdmE8Vec = Wire(Vec(vlen /  8, Bool()))
+  val maskInWindow = Wire(Vec(vlen / 8, Bool()))
+
+  for (i <- 0 until VLENB) {
+    maskInWindow(i) := Mux1H(Seq(
+      (uvlMask(i) && uv0Mask(i)) -> newVdm(i),
+      (uvlMask(i) && !uv0Mask(i) && vma) -> 1.B, // mask agnostic
+      (uvlMask(i) && !uv0Mask(i) && !vma) -> oldVdm(i), // mask undistrubed
+      (!uvlMask(i)) -> 1.B, // tail agnostic
+    ))
+
+    // uvlMask(i): eidx < vl
+    // windowMask(i): eidx >= VLENB * uopIdx && eidx < VLENB * (uopIdx + 1)
+    // uv0Mask(i): v0(eidx)
+    vdmE8Vec(i) := Mux1H(Seq(
+      (!windowMask(i)) -> oldVdm(i), // out of window,
+      (windowMask(i)) -> maskInWindow(i),
+    ))
+  }
+
+  io.out.valid := io.in.valid
+  io.out.bits.mergedMask := vdmE8Vec.asUInt
+  io.out.bits.maskInWindow := maskInWindow.asUInt
+}
+
+class VectorMaskDataMergeUnit(val vlen: Int) extends Module with VectorConfig {
+  val io = IO(new Bundle {
+    val in = Input(ValidIO(new Bundle {
+      val newVd   = UIntVlen
+      val oldVd   = UIntVlen
+      val srcMask = UIntVlen
+      val vl      = UInt(VlWidth.W)
+      // data veew
+      val dveew   = VSew()
+      val vm      = Bool()
+      val vma     = Bool()
+    }))
+    val out = Output(ValidIO(new Bundle {
+      val vd = UIntVlen
+    }))
+  })
+
+  val dveew = io.in.bits.dveew
+  val eewOH = UIntToOH(dveew, 4)
+  val vm = io.in.bits.vm
+  val newVd = io.in.bits.newVd
+  val oldVd = io.in.bits.oldVd
+  val vl = io.in.bits.vl
+  val vma = io.in.bits.vma
+
+  val maskMergeMod: Seq[VectorMaskMergeUnit] = Seq.fill(MaxLMUL)(Module(new VectorMaskMergeUnit(vlen)))
+
+  val mask = Mux(vm, Fill(vlen, 1.U(1.W)), io.in.bits.srcMask)
+  val newE8MaskVec  = newVd.toVf8Vec
+  val newE16MaskVec = newE8MaskVec.flatMap(_.toVf2Vec).take(MaxLMUL)
+  val newE32MaskVec = newE8MaskVec.flatMap(_.toVf4Vec).take(MaxLMUL)
+  val newE64MaskVec = newE8MaskVec.flatMap(_.toVf8Vec).take(MaxLMUL)
+  val oldMaskVf8Vec = oldVd.toVf8Vec
+  val maskVf8Vec    = mask.toVf8Vec
+
+  for ((mod, i) <- maskMergeMod.zipWithIndex) {
+    mod.io.in.valid := io.in.valid
+    mod.io.in.bits match {
+      case bits =>
+        bits.uopIdx := i.U
+        bits.newVdm := Mux1H(eewOH, Seq(
+          newE8MaskVec(i),
+          Fill(2, newE16MaskVec(i)),
+          Fill(4, newE32MaskVec(i)),
+          Fill(8, newE64MaskVec(i)),
+        ))
+        bits.oldVdm := oldMaskVf8Vec(i)
+        bits.vmaskm := maskVf8Vec(i)
+        bits.vl     := vl
+        bits.dveew  := dveew
+        bits.dveewOH:= eewOH
+        bits.vma    := vma
+    }
+  }
+
+  val e16Tail1s = Cat(Fill(4, Vlenb1s), 0.U((VLENB * 4).W))
+  val e32Tail1s = Cat(Fill(6, Vlenb1s), 0.U((VLENB * 2).W))
+  val e64Tail1s = Cat(Fill(7, Vlenb1s), 0.U((VLENB * 1).W))
+  require(e16Tail1s.getWidth == vlen && e32Tail1s.getWidth == vlen && e64Tail1s.getWidth == vlen)
+
+  val maskInWindowVec: Vec[UInt] = VecInit(maskMergeMod.map(_.io.out.bits.maskInWindow))
+
+  val e8MergedMask = Cat(maskInWindowVec.reverse)
+  require(e8MergedMask.getWidth == vlen, s"width of e8MergedMask is ${e8MergedMask.getWidth}")
+
+  val e16MergedMask = Cat(maskInWindowVec.grouped(2).map {
+    case group: Seq[UInt] =>
+    group.reduce(_ | _)
+  }.toSeq.reverse)
+  require(e16MergedMask.getWidth == vlen / 2, s"width of e16MergedMask is ${e16MergedMask.getWidth}")
+
+  val e32MergedMaskVec = Cat(maskInWindowVec.grouped(4).map {
+    case group: Seq[UInt] =>
+      group.reduce(_ | _)
+  }.toSeq.reverse)
+    .ensuring(_.getWidth == vlen / 4)
+
+  val e64MergedMaskVec = Cat(maskInWindowVec.reduce(_ | _))
+    .ensuring(_.getWidth == vlen / 8)
+
+  io.out.valid := io.in.valid
+  io.out.bits.vd := Mux1H(eewOH, Seq(
+    e8MergedMask,
+    Cat(Fill(4, Vlenb1s), e16MergedMask),
+    Cat(Fill(6, Vlenb1s), e32MergedMaskVec),
+    Cat(Fill(7, Vlenb1s), e64MergedMaskVec),
+  ))
+}
+
+object VectorMaskDataMergeUnitMain extends App {
+  println("Generating the VectorDataMergeUnit hardware")
+  emitVerilog(new VectorMaskDataMergeUnit(128), Array("--target-dir", "build/vector", "--throw-on-first-error", "--full-stacktrace"))
+  println("done")
+}
+
+object VectorMaskMergeUnitMain extends App {
+  println("Generating the VectorDataMergeUnit hardware")
+  emitVerilog(new VectorMaskMergeUnit(128), Array("--target-dir", "build/vector", "--throw-on-first-error", "--full-stacktrace"))
+  println("done")
 }
 
 object VectorDataMergeUnitMain extends App {
