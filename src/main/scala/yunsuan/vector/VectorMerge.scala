@@ -517,7 +517,7 @@ class VectorMaskMergeUnit(val vlen: Int) extends Module with VectorConfig {
 
   io.out.valid := io.in.valid
   io.out.bits.mergedMask := vdmE8Vec.asUInt
-  io.out.bits.maskInWindow := maskInWindow.asUInt
+  io.out.bits.maskInWindow := windowMask & maskInWindow.asUInt
 }
 
 class VectorMaskDataMergeUnit(val vlen: Int) extends Module with VectorConfig {
