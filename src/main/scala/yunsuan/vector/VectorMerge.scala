@@ -552,8 +552,9 @@ class VectorMaskDataMergeUnit(val vlen: Int) extends Module with VectorConfig {
   val newE16MaskVec = newE8MaskVec.flatMap(_.toVf2Vec).take(MaxLMUL)
   val newE32MaskVec = newE8MaskVec.flatMap(_.toVf4Vec).take(MaxLMUL)
   val newE64MaskVec = newE8MaskVec.flatMap(_.toVf8Vec).take(MaxLMUL)
-  val oldMaskVf8Vec = oldVd.toVf8Vec
-  val maskVf8Vec    = mask.toVf8Vec
+
+  val oldVf8Vec = oldVd.toVf8Vec
+  val maskVf8Vec = mask.toVf8Vec
 
   for ((mod, i) <- maskMergeMod.zipWithIndex) {
     mod.io.in.valid := io.in.valid
@@ -566,8 +567,18 @@ class VectorMaskDataMergeUnit(val vlen: Int) extends Module with VectorConfig {
           Fill(4, newE32MaskVec(i)),
           Fill(8, newE64MaskVec(i)),
         ))
-        bits.oldVdm := oldMaskVf8Vec(i)
-        bits.vmaskm := maskVf8Vec(i)
+        bits.oldVdm := Mux1H(eewOH, Seq(
+          oldVf8Vec(i),
+          oldVf8Vec(i / 2),
+          oldVf8Vec(i / 4),
+          oldVf8Vec(i / 8),
+        ))
+        bits.vmaskm := Mux1H(eewOH, Seq(
+          maskVf8Vec(i),
+          maskVf8Vec(i / 2),
+          maskVf8Vec(i / 4),
+          maskVf8Vec(i / 8),
+        ))
         bits.vl     := vl
         bits.dveew  := dveew
         bits.dveewOH:= eewOH
