@@ -409,7 +409,6 @@ class VectorDataMergeUnit(val vlen: Int) extends Module with VectorConfig {
   val oldVdE8Vec = oldVd.to8bitVec
   val vdE8Vec = Wire(VecE8)
 
-  val byte1s = "hff".U
 
   for (i <- 0 until VLENB) {
     vdE8Vec(i) := Mux1H(Seq(
@@ -618,6 +617,81 @@ class VectorMaskDataMergeUnit(val vlen: Int) extends Module with VectorConfig {
     Cat(Fill(6, Vlenb1s), e32MergedMaskVec),
     Cat(Fill(7, Vlenb1s), e64MergedMaskVec),
   ))
+}
+
+class VectorAgnosticMergeUnit(val vlen: Int) extends Module with VectorConfig {
+  val io = IO(new Bundle {
+    val in = Input(ValidIO(new Bundle {
+      val vdIdx   = UInt(3.W)
+      val newVd   = UIntVlen
+      val srcMask = UIntVlen
+      val vl      = UInt(VlWidth.W)
+      // data veew
+      val dveew   = VSew()
+    }))
+    val out = Output(ValidIO(new Bundle {
+      val vd = UIntVlen
+    }))
+  })
+
+  val valid = io.in.valid
+  val newVd = io.in.bits.newVd
+  val srcMask = io.in.bits.srcMask
+  val vdIdx = io.in.bits.vdIdx
+  val dveew = io.in.bits.dveew
+  val eewOH = UIntToOH(dveew, 4)
+  val vl = io.in.bits.vl
+
+  val e8vl = (vl << dveew).asUInt.take(VlWidth)
+  val bodyMask8b = Wire(UInt(VLENB.W))
+  val tailMask8b = Wire(UInt(VLENB.W))
+
+  val e8Idxes = VecInit.tabulate(VLENB)(i => Cat(vdIdx, i.U(ElemIdxWidth.W)))
+
+  bodyMask8b := Cat((0 until VLENB).map(i => e8Idxes(i) <  e8vl).reverse)
+  tailMask8b := (~bodyMask8b).asUInt
+
+  val srcMask2x = Wire(UInt(vlen.W))
+  val srcMask4x = Wire(UInt(vlen.W))
+  val srcMask8x = Wire(UInt(vlen.W))
+  srcMask2x := Cat(srcMask.take(vlen / 2).asBools.map(b => Fill(2, b)).reverse)
+  srcMask4x := Cat(srcMask.take(vlen / 4).asBools.map(b => Fill(4, b)).reverse)
+  srcMask8x := Cat(srcMask.take(vlen / 8).asBools.map(b => Fill(8, b)).reverse)
+
+  val srcMaskVlen = Mux1H(
+    eewOH,
+    Seq(
+      srcMask,
+      srcMask2x,
+      srcMask4x,
+      srcMask8x,
+    )
+  )
+
+  val srcMask8b = srcMaskVlen.toVf8Vec(vdIdx)
+
+  val activeMask8b = bodyMask8b & srcMask8b
+  val inactiveMask8b = bodyMask8b & (~srcMask8b).asUInt
+
+  val newVdE8Vec = newVd.to8bitVec
+  val vdE8Vec = Wire(VecE8)
+
+  for (i <- 0 until VLENB) {
+    vdE8Vec(i) := Mux1H(Seq(
+      activeMask8b(i)    -> newVdE8Vec(i),
+      inactiveMask8b(i)  -> byte1s,
+      tailMask8b(i)      -> byte1s,
+    ))
+  }
+
+  io.out.bits.vd := vdE8Vec.asUInt
+  io.out.valid := io.in.valid
+}
+
+object VectorAgnosticMergeUnitMain extends App {
+  println("Generating the VectorAgnosticMergeUnit hardware")
+  emitVerilog(new VectorAgnosticMergeUnit(128), Array("--target-dir", "build/vector", "--throw-on-first-error", "--full-stacktrace"))
+  println("done")
 }
 
 object VectorMaskDataMergeUnitMain extends App {

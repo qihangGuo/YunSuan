@@ -33,6 +33,8 @@ object Common {
 
     def Vlenb1s = Fill(VLENB, 1.U(1.W))
 
+    val byte1s = "hff".U
+
     def VdIdx: UInt = UInt(VdIdxWidth.W)
   }
 
