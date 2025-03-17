@@ -29,6 +29,11 @@ object Common {
 
     def VecE64: Vec[UInt] = Vec(vlen / 64, UInt(64.W))
 
+    def genMaskE8  = UInt(VLENB.W)
+    def genMaskE16 = UInt((VLENB / 2).W)
+    def genMaskE32 = UInt((VLENB / 4).W)
+    def genMaskE64 = UInt((VLENB / 8).W)
+
     def UIntVlenb: UInt = UInt(VLENB.W)
 
     def Vlenb1s = Fill(VLENB, 1.U(1.W))
@@ -42,11 +47,25 @@ object Common {
     * vtype bundle, should not used as csr reg
     */
   class VType extends Bundle {
-    val illegal = Bool()
+    val vill = Bool()
     val vma = Bool()
     val vta = Bool()
     val vsew = VSew()
     val vlmul = VLmul()
+  }
+
+  object VType {
+    def apply(): VType = {
+      new VType
+    }
+
+    def mu: UInt = 0.U(1.W)
+
+    def ma: UInt = 1.U(1.W)
+
+    def tu: UInt = 0.U(1.W)
+
+    def ta: UInt = 1.U(1.W)
   }
 
   // modify the width when support more vector data width

@@ -45,7 +45,11 @@ class VIntAdder64b extends Module {
     })
     val out = Output(new Bundle {
       val vd = Output(UInt(64.W))
-      val cmpOut = Output(UInt(8.W)) // compare or add-with-carry carry output
+      // compare or add-with-carry carry output
+      val cmpOutE8  = Output(UInt(8.W))
+      val cmpOutE16 = Output(UInt(4.W))
+      val cmpOutE32 = Output(UInt(2.W))
+      val cmpOutE64 = Output(UInt(1.W))
       val toFixP = Output(new AdderToFixP)
     })
   })
@@ -154,7 +158,11 @@ class VIntAdder64b extends Module {
     sewOH.is32 -> Cat(~(0.U(6.W)), cmpOut(7), cmpOut(3)),
     sewOH.is64 -> Cat(~(0.U(7.W)), cmpOut(7))
   ))
-  io.out.cmpOut := cmpOutAdjust
+
+  io.out.cmpOutE8  := cmpOut
+  io.out.cmpOutE16 := Cat(cmpOut(7), cmpOut(5), cmpOut(3), cmpOut(1))
+  io.out.cmpOutE32 := Cat(cmpOut(7), cmpOut(3))
+  io.out.cmpOutE64 := Cat(cmpOut(7))
 
   //---- To Fixed-Point unit ----
   for (i <- 0 until 8) {
