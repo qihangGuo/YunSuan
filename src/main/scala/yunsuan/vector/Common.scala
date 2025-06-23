@@ -281,6 +281,11 @@ object Common {
 
     val length = uint.getWidth
 
+    def take(n: Int): UInt = {
+      require(n <= length, s"Can not take $n bits, since the operand is $length bits width")
+      uint(n - 1, 0)
+    }
+
     def drop(n: Int): UInt = {
       require(n < length, s"Can not drop $n bits, since the operand is $length bits width")
       uint(length - 1, n)
