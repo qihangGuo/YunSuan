@@ -25,11 +25,12 @@ extern "C"{
 #define FloatCvtF2X (8) //f->i/ui/f
 #define FloatCvtI2F (9) //i/ui->f
 #define VIntegerMAC (10)
+#define IntegerMul (11)
 // #define ALL_FUTYPES {VFloatAdder,VFloatFMA,VFloatDivider,VIntegerALU,VPermutation,VIntegerALUV2,VIntegerDivider,VFloatCvt}
 
 //will be delated
-#define FU_NUM 9 
-#define ALL_FUTYPES {VFloatFMA,VFloatDivider,VIntegerALU,VPermutation,VIntegerDivider,VFloatCvt,FloatCvtF2X,FloatCvtI2F,VIntegerMAC}
+#define FU_NUM 10
+#define ALL_FUTYPES {VFloatFMA,VFloatDivider,VIntegerALU,VPermutation,VIntegerDivider,VFloatCvt,FloatCvtF2X,FloatCvtI2F,VIntegerMAC,IntegerMul}
 
 #define INT_ROUNDING(result, xrm, gb) \
   do { \
@@ -330,6 +331,13 @@ extern "C"{
   #define FCVT_D_LU        (binstoi("00001100"))
   #define FCVT_D_L         (binstoi("00001101"))
 
+  // scalar integer mul
+  #define IMUL_MUL    (binstoi("00000"))
+  #define IMUL_MULH   (binstoi("00001"))
+  #define IMUL_MULHSU (binstoi("00010"))
+  #define IMUL_MULHU  (binstoi("00011"))
+  #define IMUL_MULW   (binstoi("00100"))
+  #define IMUL_MULW7  (binstoi("01100"))
 
   #define VFCVT_ALL_OPTYPES {VFCVT_XUFV, VFCVT_XFV, VFCVT_FXUV, VFCVT_FXV, VFCVT_RTZ_XUFV, VFCVT_RTZ_XFV, \
   VFWCVT_XUFV, VFWCVT_XFV, VFWCVT_FXUV, VFWCVT_FXV, VFWCVT_FFV, VFWCVT_RTZ_XUFV, VFWCVT_RTZ_XFV, \
@@ -382,6 +390,10 @@ extern "C"{
   #define VSMUL            (binstoi("01100110"))
 
   #define VIMAC_ALL_OPTYPES {VMUL,VWMUL,VWMULU,VWMULSU,VMULH,VMULHU,VMULHSU,VMACC,VWMACCU,VWMACC,VWMACCSU,VWMACCUS,VNMSAC,VMADD,VNMSUB,VSMUL}
+
+  //scalar Mul
+  #define IMUL_NUM 6
+  #define IMUL_OPTYPES {IMUL_MUL,IMUL_MULH,IMUL_MULHSU,IMUL_MULHU,IMUL_MULW,IMUL_MULW7}
 
 // pre-compile stoi
 constexpr uint8_t binstoi(const char str[]) {
