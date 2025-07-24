@@ -230,11 +230,18 @@ object Common {
       val w = uint.getWidth / num
       this.splitToVec(num, w)
     }
+
+    def splitToVecByWidth(w: Int): Vec[UInt] = {
+      val num = uint.getWidth / w
+      this.splitToVec(num, w)
+    }
   }
 
   implicit def castToUIntUtil(uint: UInt): VecUIntUtil = new VecUIntUtil(uint)
 
   implicit def castToUIntUtil(v: Vec[UInt]): VecUIntUtil = new VecUIntUtil(v)
+
+  implicit def vecBoolCastToVecUInt(vb: Vec[Bool]): Vec[UInt] = VecInit(vb.map(_.asUInt))
 
   class VecUtilType[T <: Data](val vec: Vec[T]) {
     val length = vec.length
@@ -291,6 +298,13 @@ object Common {
       uint(length - 1, n)
     }
 
+    def takeOrPad(n: Int): UInt = {
+      if (n <= length)
+        this.take(n)
+      else
+        uint.pad(n)
+    }
+
     def &>(b: Bool): UInt = {
       Mux(b, uint, 0.U)
     }
@@ -327,5 +341,17 @@ object Common {
 
   def WireInitFixedWidth[T <: Data](init: T)(implicit sourceInfo: SourceInfo): T = {
     WireInit(UInt(init.getWidth.W), init).asInstanceOf[T]
+  }
+
+  object BundleMaker {
+    implicit class BundleMakeConstructor[T <: Data](items: Seq[T]) {
+      def makeBundle[TB <: Bundle](bundleGen: => TB): TB = {
+        val node = Wire(bundleGen)
+        for ((sink, source) <- node.getElements.zip(items)) {
+          sink := source
+        }
+        node
+      }
+    }
   }
 }
