@@ -11,6 +11,7 @@ class VIAluOpcode extends Bundle {
   def isShiftLogic: Bool = !op(4) &  op(3)
   def isLeftShiftLogic:  Bool = isShiftLogic & !op(2) & !op(1)
   def isMaxMinLogic: Bool = op(3)
+  def isSatLogic: Bool = !op(2) & op(1) & !op(0)
 
   def isVand : Bool = isBitLogic & !op(2) & !op(1) &  op(0)
   def isVnand: Bool = isBitLogic & !op(2) &  op(1) & !op(0)

@@ -21,6 +21,7 @@ class VIAluAdderInput(xlen: Int) extends Bundle {
 class VIAluAdderOutput(xlen: Int) extends Bundle {
   val vd = UInt(xlen.W)
   val addCarryCmpMask = UInt(8.W)
+  val vxsat = UInt(8.W)
 }
 
 class VIAluAdder(xlen: Int = 64) extends Module {
@@ -56,6 +57,8 @@ class VIAluAdder(xlen: Int = 64) extends Module {
 
   private val isMaxMin = opcode.isMaxMinLogic
   private val isMax = opcode.isMax
+
+  private val isSat = opcode.isSatLogic
 
   private val vs2_0 = Wire(UInt(8.W))
   private val vs2_1 = Wire(UInt(8.W))
@@ -411,6 +414,8 @@ class VIAluAdder(xlen: Int = 64) extends Module {
   for (i <- 0 until 8) {
     cout(i) := addResult(i * 9 + 8)
   }
+  private val coutResult = Wire(UInt(8.W))
+  coutResult := cout.asUInt
 
   // compare
   private val ltVec = Wire(Vec(8, Bool()))
@@ -443,7 +448,7 @@ class VIAluAdder(xlen: Int = 64) extends Module {
   ))
 
   private val carryCoutCmp = Wire(UInt(8.W))
-  carryCoutCmp := Mux(isAddCarry, Mux(isVmsbc, (~cout.asUInt).asUInt, cout.asUInt), cmpResult)
+  carryCoutCmp := Mux(isAddCarry, Mux(isVmsbc, (~coutResult).asUInt, coutResult), cmpResult)
 
   private val addCarryCmpMask = Wire(UInt(8.W))
   addCarryCmpMask := Mux1H(Seq(
@@ -454,24 +459,85 @@ class VIAluAdder(xlen: Int = 64) extends Module {
   ))
 
   // max/min
+  def selectPos(in: UInt, i: Int): Bool = {
+    Mux1H(Seq(
+      sel8  -> in(i),
+      sel16 -> in((i / 2) * 2 + 1),
+      sel32 -> in((i / 4) * 4 + 3),
+      sel64 -> in(7),
+    ))
+  }
+
   private val maxMinVec = Wire(Vec(8, UInt(8.W)))
   for (i <- 0 until 8) {
-    val select = Mux1H(Seq(
-      sel8  -> ltVec(i),
-      sel16 -> ltVec((i / 2) * 2 + 1),
-      sel32 -> ltVec((i / 4) * 4 + 3),
-      sel64 -> ltVec(7),
-    ))
+    val select = selectPos(ltResult, i)
     maxMinVec(i) := Mux(select ^ isMax, vs2(i * 8 + 7, i * 8), vs1(i * 8 + 7, i * 8))
   }
   private val maxMinResult = Wire(UInt(xlen.W))
   maxMinResult := maxMinVec.asUInt
 
+  // saturating add/sub
+  // can move to the 2 cycle
+  private val vs2Head = Wire(Vec(8, Bool()))
+  private val vs1Head = Wire(Vec(8, Bool()))
+  private val vdHead  = Wire(Vec(8, Bool()))
+  private val coutSat = Wire(Vec(8, Bool()))
+  private val satVec  = Wire(Vec(8, UInt(8.W)))
 
+  private val overflowSign = Wire(UInt(8.W))
+  overflowSign := Mux1H(Seq(
+    sel8  -> "hff".U,
+    sel16 -> "haa".U,
+    sel32 -> "h88".U,
+    sel64 -> "h80".U,
+  ))
+
+  for (i <- 0 until 8) {
+    vs2Head(i) := vs2(i * 8 + 7)
+    vs1Head(i) := vs1(i * 8 + 7)
+    vdHead(i) := originResult(i)(7)
+    coutSat(i) := Mux(isSigned,
+      Mux(isSub, !vs2Head(i) & vs1Head(i) & vdHead(i) | vs2Head(i) & !vs1Head(i) & !vdHead(i),
+        vs2Head(i) & vs1Head(i) & !vdHead(i) | !vs2Head(i) & !vs1Head(i) & vdHead(i)),
+      cout(i) ^ isSub)
+  }
+
+  private val sat = Wire(UInt(8.W))
+  sat := Mux1H(Seq(
+    sel8 -> coutSat.asUInt,
+    sel16 -> Cat(Fill(2, coutSat(7)), Fill(2, coutSat(5)), Fill(2, coutSat(3)), Fill(2, coutSat(1))),
+    sel32 -> Cat(Fill(4, coutSat(7)), Fill(4, coutSat(3))),
+    sel64 -> Fill(8, coutSat(7)),
+  ))
+
+  for (i <- 0 until 8) {
+    val upOverflowUnSign = selectPos(coutResult, i)
+    val downOverflowSign = selectPos(vs2Head.asUInt, i)
+
+    satVec(i) := Mux(sat(i),
+      Mux(isSigned,
+        Mux(downOverflowSign, Cat(overflowSign(i), 0.U(7.W)), Cat(~overflowSign(i), "h7f".U(7.W))),
+        Mux(upOverflowUnSign, "hff".U, "h00".U)),
+      originResult(i))
+  }
+
+  private val satResult = Wire(UInt(xlen.W))
+  satResult := satVec.asUInt
+
+  io.out.vd := MuxCase(originAddResult, Seq(
+    isSat -> satResult,
+    isMaxMin -> maxMinResult,
+  ))
   io.out.addCarryCmpMask := addCarryCmpMask
-  io.out.vd := Mux(isMaxMin, maxMinResult, originAddResult)
+  io.out.vxsat := Mux(isSat, sat, 0.U)
 
 
+  dontTouch(vs2Head)
+  dontTouch(vs1Head)
+  dontTouch(vdHead)
+  dontTouch(coutSat)
+  dontTouch(satVec)
+  dontTouch(originAddResult)
 
   dontTouch(sel8)
   dontTouch(sel16)

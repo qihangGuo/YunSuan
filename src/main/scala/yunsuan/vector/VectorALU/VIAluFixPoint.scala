@@ -36,6 +36,7 @@ class VIAluFixPointOutput(xlen: Int) extends Bundle {
   val vd = UInt(xlen.W)
   val narrowVd = UInt((xlen/2).W)
   val addCarryCmpMask = UInt(8.W)
+  val vxsat = UInt(8.W)
 }
 
 class VIAluFixPoint(xlen: Int) extends Module {
@@ -85,14 +86,17 @@ class VIAluFixPoint(xlen: Int) extends Module {
   private val isMiscS1 = Wire(Bool())
   private val addCarryCmpMaskS1 = Wire(UInt(8.W))
   private val narrowVdS1 = Wire(UInt((xlen/2).W))
+  private val satS1 = Wire(UInt(8.W))
 
   vdAdderS1 := RegEnable(vIAluAdder.io.out.vd, valid)
   vdMiscS1 := RegEnable(vIAluMisc.io.out.vd, valid)
   isMiscS1 := GatedValidRegNext(isMisc)
   addCarryCmpMaskS1 := RegEnable(vIAluAdder.io.out.addCarryCmpMask, valid)
   narrowVdS1 := RegEnable(vIAluMisc.io.out.narrowVd, valid)
+  satS1 := RegEnable(vIAluAdder.io.out.vxsat, valid)
 
   io.out.vd := Mux(isMiscS1, vdMiscS1, vdAdderS1)
   io.out.narrowVd := narrowVdS1
   io.out.addCarryCmpMask := addCarryCmpMaskS1
+  io.out.vxsat := satS1
 }
