@@ -16,6 +16,7 @@ class VIAluAdderInput(xlen: Int) extends Bundle {
   val isSigned = Bool()
   val mask = UInt(8.W)
   val isAddCarry = Bool()
+  val vxrm = UInt(2.W)
 }
 
 class VIAluAdderOutput(xlen: Int) extends Bundle {
@@ -40,6 +41,7 @@ class VIAluAdder(xlen: Int = 64) extends Module {
   private val isSigned = io.in.isSigned
   private val mask = io.in.mask
   private val isAddCarry = io.in.isAddCarry
+  private val rm = io.in.vxrm
 
   private val sel8 = SewOH(vsew).is8
   private val sel16 = SewOH(vsew).is16
@@ -59,6 +61,7 @@ class VIAluAdder(xlen: Int = 64) extends Module {
   private val isMax = opcode.isMax
 
   private val isSat = opcode.isSatLogic
+  private val isAvg = opcode.isAvgLogic
 
   private val vs2_0 = Wire(UInt(8.W))
   private val vs2_1 = Wire(UInt(8.W))
@@ -524,13 +527,141 @@ class VIAluAdder(xlen: Int = 64) extends Module {
   private val satResult = Wire(UInt(xlen.W))
   satResult := satVec.asUInt
 
+  // Averaging add/sub
+  // can move to the 2 cycle
+  private val avgShiftOneSel8  = Wire(Vec(8, UInt(8.W)))
+  private val avgShiftOneSel16 = Wire(Vec(4, UInt(16.W)))
+  private val avgShiftOneSel32 = Wire(Vec(2, UInt(32.W)))
+  private val avgShiftOneSel64 = Wire(UInt(64.W))
+  private val avgShiftOneRoundSel8  = Wire(Vec(8, Bool()))
+  private val avgShiftOneRoundSel16 = Wire(Vec(4, Bool()))
+  private val avgShiftOneRoundSel32 = Wire(Vec(2, Bool()))
+  private val avgShiftOneRoundSel64 = Wire(Bool())
+
+  for (i <- 0 until 8) {
+    avgShiftOneSel8(i) := Cat(isSub ^ cout(i) ^ Mux(isSigned, vs2Head(i) ^ vs1Head(i), false.B), originResult(i).head(7))
+    avgShiftOneRoundSel8(i) := originResult(i)(0)
+  }
+  for (i <- 0 until 4) {
+    avgShiftOneSel16(i) := Cat(isSub ^ cout(i * 2 + 1) ^ Mux(isSigned, vs2Head(i * 2 + 1) ^ vs1Head(i * 2 + 1), false.B),
+      originAddResult(i * 16 + 15, i * 16 + 1))
+    avgShiftOneRoundSel16(i) := originResult(i * 2)(0)
+  }
+  for (i <- 0 until 2) {
+    avgShiftOneSel32(i) := Cat(isSub ^ cout(i * 4 + 3) ^ Mux(isSigned, vs2Head(i * 4 + 3) ^ vs1Head(i * 4 + 3), false.B),
+      originAddResult(i * 32 + 31, i * 32 + 1))
+    avgShiftOneRoundSel32(i) := originResult(i * 4)(0)
+  }
+  avgShiftOneSel64 := Cat(isSub ^ cout(7) ^ Mux(isSigned, vs2Head(7) ^ vs1Head(7), false.B), originAddResult.head(63))
+  avgShiftOneRoundSel64 := originResult(0)(0)
+
+  def RNU: UInt = 0.U(2.W)
+  def RNE: UInt = 1.U(2.W)
+  def RDN: UInt = 2.U(2.W)
+  def ROD: UInt = 3.U(2.W)
+
+  def genRound(in: UInt, rIn: UInt, d: Int): UInt = {
+    val (g, r) = (in(0), rIn(d - 1))
+    val roundUp = MuxLookup(
+      rm,
+      false.B
+    )(Seq(
+      RNU -> r,
+      RNE -> (if (d == 1) r & g else r & (rIn(d - 2, 0).orR | g)),
+      RDN -> false.B,
+      ROD -> (!g & rIn(d - 1, 0).orR),
+    ))
+    val incOne = in + 1.U
+    Mux(roundUp, incOne, in)
+  }
+  private val avgResultSel8  = Wire(Vec(8, UInt(8.W)))
+  private val avgResultSel16 = Wire(Vec(4, UInt(16.W)))
+  private val avgResultSel32 = Wire(Vec(2, UInt(32.W)))
+  private val avgResultSel64 = Wire(UInt(xlen.W))
+  for (i <- 0 until 8) {
+    avgResultSel8(i) := genRound(avgShiftOneSel8(i), avgShiftOneRoundSel8(i), 1)
+  }
+  for (i <- 0 until 4) {
+    avgResultSel16(i) := genRound(avgShiftOneSel16(i), avgShiftOneRoundSel16(i), 1)
+  }
+  for (i <- 0 until 2) {
+    avgResultSel32(i) := genRound(avgShiftOneSel32(i), avgShiftOneRoundSel32(i), 1)
+  }
+  avgResultSel64 := genRound(avgShiftOneSel64, avgShiftOneRoundSel64, 1)
+
+  private val vs2Element8IsAll1s = Wire(Vec(8, Bool()))
+  private val vs2Element8ExcludeHighBitIsAll1s = Wire(Vec(8, Bool()))
+  private val vs1Element8IsAll0s = Wire(Vec(8, Bool()))
+  private val vs1Element8ExcludeHighBitIsAll0s = Wire(Vec(8, Bool()))
+  for (i <- 0 until 8) {
+    vs2Element8IsAll1s(i) := vs2(i * 8 + 7, i * 8).andR
+    vs2Element8ExcludeHighBitIsAll1s(i) := !vs2(i * 8 + 7) & vs2(i * 8 + 6, i * 8).andR
+    vs1Element8IsAll0s(i) := !vs1(i * 8 + 7, i * 8).orR
+    vs1Element8ExcludeHighBitIsAll0s(i) := vs1(i * 8 + 7) & !vs1(i * 8 + 6, i * 8).orR
+  }
+
+  private val maxSubMinSel8  = Wire(Vec(8, Bool()))
+  private val maxSubMinSel16 = Wire(Vec(4, Bool()))
+  private val maxSubMinSel32 = Wire(Vec(2, Bool()))
+  private val maxSubMinSel64 = Wire(Bool())
+  private val maxSubMin = Wire(Bool())
+  for (i <- 0 until 8) {
+    maxSubMinSel8(i) := vs2Element8ExcludeHighBitIsAll1s(i) & vs1Element8ExcludeHighBitIsAll0s(i)
+  }
+  for (i <- 0 until 4) {
+    maxSubMinSel16(i) := vs2Element8ExcludeHighBitIsAll1s(i * 2 + 1) & vs2Element8IsAll1s(i * 2) &
+                         vs1Element8ExcludeHighBitIsAll0s(i * 2 + 1) & vs1Element8IsAll0s(i * 2)
+  }
+  for (i <- 0 until 2) {
+    maxSubMinSel32(i) := vs2Element8ExcludeHighBitIsAll1s(i * 4 + 3) & vs2Element8IsAll1s.asUInt(i * 4 + 2, i * 4).andR &
+                         vs1Element8ExcludeHighBitIsAll0s(i * 4 + 3) & vs1Element8IsAll0s.asUInt(i * 4 + 2, i * 4).andR
+  }
+  maxSubMinSel64 := vs2Element8ExcludeHighBitIsAll1s(7) & vs2Element8IsAll1s.asUInt(6, 0).andR &
+                    vs1Element8ExcludeHighBitIsAll0s(7) & vs1Element8IsAll0s.asUInt(6, 0).andR
+
+  maxSubMin := Mux1H(Seq(
+    sel8  -> maxSubMinSel8.asUInt.orR,
+    sel16 -> maxSubMinSel16.asUInt.orR,
+    sel32 -> maxSubMinSel32.asUInt.orR,
+    sel64 -> maxSubMinSel64,
+  ))
+
+  private val avgRoundIsRnuOrRne = rm === RNU || rm === RNE
+
+  private val avgOverflow = isSub & isSigned & avgRoundIsRnuOrRne & maxSubMin
+
+  private val avgResult = Wire(UInt(xlen.W))
+  avgResult := Mux1H(Seq(
+    sel8  -> avgResultSel8.asUInt,
+    sel16 -> avgResultSel16.asUInt,
+    sel32 -> avgResultSel32.asUInt,
+    sel64 -> avgResultSel64,
+  ))
+
   io.out.vd := MuxCase(originAddResult, Seq(
     isSat -> satResult,
+    isAvg -> avgResult,
     isMaxMin -> maxMinResult,
   ))
   io.out.addCarryCmpMask := addCarryCmpMask
-  io.out.vxsat := Mux(isSat, sat, 0.U)
+  io.out.vxsat := MuxCase(0.U, Seq(
+    isSat -> sat,
+    isAvg -> avgOverflow,
+  ))
 
+  dontTouch(avgResultSel8)
+  dontTouch(avgResultSel16)
+  dontTouch(avgResultSel32)
+  dontTouch(avgResultSel64)
+  dontTouch(avgShiftOneSel8)
+  dontTouch(avgShiftOneSel16)
+  dontTouch(avgShiftOneSel32)
+  dontTouch(avgShiftOneSel64)
+  dontTouch(avgShiftOneRoundSel8)
+  dontTouch(avgShiftOneRoundSel16)
+  dontTouch(avgShiftOneRoundSel32)
+  dontTouch(avgShiftOneRoundSel64)
+  dontTouch(originResult)
 
   dontTouch(vs2Head)
   dontTouch(vs1Head)

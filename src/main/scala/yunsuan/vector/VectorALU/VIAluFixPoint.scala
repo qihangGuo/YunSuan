@@ -30,6 +30,7 @@ class VIAluFixPointInput(xlen: Int) extends Bundle {
   val mask = UInt(8.W)
   val isAddCarry = Bool()
   val isNarrow = Bool()
+  val vxrm = UInt(2.W)
 }
 
 class VIAluFixPointOutput(xlen: Int) extends Bundle {
@@ -58,6 +59,7 @@ class VIAluFixPoint(xlen: Int) extends Module {
   private val mask = io.in.mask
   private val isAddCarry = io.in.isAddCarry
   private val isNarrow = io.in.isNarrow
+  private val vxrm = io.in.vxrm
 
   val vIAluAdder = Module(new VIAluAdder(xlen))
   vIAluAdder.io.in.opcode := opcode
@@ -70,6 +72,7 @@ class VIAluFixPoint(xlen: Int) extends Module {
   vIAluAdder.io.in.isSigned := isSigned
   vIAluAdder.io.in.mask := mask
   vIAluAdder.io.in.isAddCarry := isAddCarry
+  vIAluAdder.io.in.vxrm := vxrm
 
 
   val vIAluMisc = Module(new VIAluMisc(xlen))
