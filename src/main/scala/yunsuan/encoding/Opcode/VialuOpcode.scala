@@ -2,6 +2,13 @@ package yunsuan.encoding.Opcode
 
 import chisel3._
 
+object FixedPointRoundingMode {
+  def RNU: UInt = 0.U(2.W)
+  def RNE: UInt = 1.U(2.W)
+  def RDN: UInt = 2.U(2.W)
+  def ROD: UInt = 3.U(2.W)
+}
+
 class VIAluOpcode extends Bundle {
   val op = UInt(6.W)
   def isAdd: Bool = !op(3) & !op(2) & !op(1) & !op(0) // op === VialuOpcode.vadd
@@ -32,6 +39,8 @@ class VIAluOpcode extends Bundle {
   def isCmpGt: Bool =  isSub & isCmpNeLeGt &  op(0)
 
   def isMax: Bool = isMaxMinLogic & op(0)
+
+  def isScalShiftLogic: Bool = isShiftLogic & (op(2) ^ op(1)) & op(0)
 }
 
 object VialuOpcode {

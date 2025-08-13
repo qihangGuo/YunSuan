@@ -2,16 +2,11 @@ package yunsuan.vector.VectorALU
 
 import chisel3._
 import chisel3.util._
+import yunsuan.encoding.Opcode.FixedPointRoundingMode._
 import yunsuan.encoding.Opcode.VIAluOpcode
 import yunsuan.vector.{SewOH, UIntSplit}
 
 import math.pow
-
-//class shiftLeft extends Module {
-//  val io = IO(new Bundle {
-//    val shamt = Input(UInt())
-//  })
-//}
 
 class VIAluMiscInput(xlen: Int) extends Bundle {
   val opcode = new VIAluOpcode
@@ -21,6 +16,7 @@ class VIAluMiscInput(xlen: Int) extends Bundle {
   val isSigned = Bool()
   val isExt = ValidIO(new ExtInfo)
   val isNarrow = Bool()
+  val vxrm = UInt(2.W)
 }
 
 class VIAluMiscOutput(xlen: Int) extends Bundle {
@@ -44,6 +40,7 @@ class VIAluMisc(xlen: Int = 64) extends Module {
   private val isVf4 = io.in.isExt.bits.isVf4
   private val isVf8 = io.in.isExt.bits.isVf8
   private val isNarrow = io.in.isNarrow
+  private val rm = io.in.vxrm
 
   private val sel8 = SewOH(vsew).is8
   private val sel16 = SewOH(vsew).is16
@@ -60,6 +57,7 @@ class VIAluMisc(xlen: Int = 64) extends Module {
   private val isVxnor = opcode.isVxnor
   private val isShift = opcode.isShiftLogic
   private val isLeftShiftLogic = opcode.isLeftShiftLogic
+  private val isScalShiftLogic = opcode.isScalShiftLogic
 
   private val ext = Wire(Vec(8, UInt(8.W)))
   ext(0) := Mux1H(Seq(
@@ -194,33 +192,70 @@ class VIAluMisc(xlen: Int = 64) extends Module {
   vs1Adjust := vs1Shift
 
 
-  def dynamicShift(data: UInt, shift: UInt): UInt = {
+  def dynamicShift(data: UInt, shift: UInt, shiftRound: UInt): (UInt, UInt) = {
     val length = shift.getWidth
     val amount = pow(2, length - 1).intValue
     val tmp = data.getWidth - amount
     val shifted = Mux(shift.head(1).asBool, Cat(Fill(amount, isSigned & data.head(1).asBool), data.head(tmp)), data)
-    if (length == 1) shifted else dynamicShift(shifted, shift.tail(1))
+    val shiftData = Mux(shift.head(1).asBool, Cat(data.tail(tmp), shiftRound.head(tmp)), shiftRound)
+    if (length == 1) (shifted, shiftData) else dynamicShift(shifted, shift.tail(1), shiftData)
   }
 
   // shift sew data
-  def shiftOneElement(data: UInt, shift: UInt, sew: Int): UInt = {
+  def shiftOneElement(data: UInt, shift: UInt, sew: Int): (UInt, UInt) = {
+    val shiftData = WireInit(0.U(data.getWidth.W))
     sew match {
-      case 8  => dynamicShift(data, shift(2, 0))
-      case 16 => dynamicShift(data, shift(3, 0))
-      case 32 => dynamicShift(data, shift(4, 0))
-      case 64 => dynamicShift(data, shift(5, 0))
+      case 8  => dynamicShift(data, shift(2, 0), shiftData)
+      case 16 => dynamicShift(data, shift(3, 0), shiftData)
+      case 32 => dynamicShift(data, shift(4, 0), shiftData)
+      case 64 => dynamicShift(data, shift(5, 0), shiftData)
     }
   }
 
-  def shift(sew: Int): UInt = {
+  def shift(sew: Int): (UInt, UInt) = {
     val shift = UIntSplit(vs2Adjust, sew).zip(UIntSplit(vs1Adjust, sew)).map { case (vs2, vs1) =>
       shiftOneElement(vs2, vs1, sew)
     }
-    Mux(isLeftShiftLogic, Cat(Cat(shift.reverse).asBools), Cat(shift.reverse))
+    val shifted = Mux(isLeftShiftLogic, Cat(Cat(shift.map(_._1).reverse).asBools), Cat(shift.map(_._1).reverse))
+    val shiftData = Cat(shift.map(_._2).reverse)
+    (shifted, shiftData)
   }
 
-  private val (shift64, shift32, shift16, shift8) = (shift(64), shift(32), shift(16), shift(8))
+  private val (shift64, shiftData64) = shift(64)
+  private val (shift32, shiftData32) = shift(32)
+  private val (shift16, shiftData16) = shift(16)
+  private val (shift8 , shiftData8)  = shift(8)
 
+  def genRound(in: UInt, rIn: UInt): UInt = {
+    val (g, r, s) = (in(0), rIn.head(1).asBool, rIn.tail(1))
+    val roundUp = MuxLookup(
+      rm,
+      false.B
+    )(Seq(
+      RNU -> r,
+      RNE -> (r & (s.orR | g)),
+      RDN -> false.B,
+      ROD -> (!g & rIn.orR),
+    ))
+    val incOne = in + 1.U
+    Mux(roundUp, incOne, in)
+  }
+
+  private val scalResultSel8 = Wire(Vec(8, UInt(8.W)))
+  private val scalResultSel16 = Wire(Vec(4, UInt(16.W)))
+  private val scalResultSel32 = Wire(Vec(2, UInt(32.W)))
+  private val scalResultSel64 = Wire(UInt(xlen.W))
+
+  for (i <- 0 until 8) {
+    scalResultSel8(i) := genRound(shift8(i * 8 + 7, i * 8), shiftData8(i * 8 + 7, i * 8))
+  }
+  for (i <- 0 until 4) {
+    scalResultSel16(i) := genRound(shift16(i * 16 + 15, i * 16), shiftData16(i * 16 + 15, i * 16))
+  }
+  for (i <- 0 until 2) {
+    scalResultSel32(i) := genRound(shift32(i * 32 + 31, i * 32), shiftData32(i * 32 + 31, i * 32))
+  }
+  scalResultSel64 := genRound(shift64, shiftData64)
 
   private val shiftResult = Wire(UInt(xlen.W))
   shiftResult := Mux1H(Seq(
@@ -237,12 +272,30 @@ class VIAluMisc(xlen: Int = 64) extends Module {
     sel32 -> shift64,
   ))
 
+  private val scalResult = Wire(UInt(xlen.W))
+  scalResult := Mux1H(Seq(
+    sel8  -> scalResultSel8.asUInt,
+    sel16 -> scalResultSel16.asUInt,
+    sel32 -> scalResultSel32.asUInt,
+    sel64 -> scalResultSel64,
+  ))
+
+
   io.out.vd := MuxCase(bitLogicResult, Seq(
     isExt -> extResult,
-    isShift -> shiftResult,
+    isShift -> Mux(isScalShiftLogic, scalResult, shiftResult),
   ))
   io.out.narrowVd := narrowResult
 
+  dontTouch(isScalShiftLogic)
+  dontTouch(shiftData64)
+  dontTouch(shiftData32)
+  dontTouch(shiftData16)
+  dontTouch(shiftData8)
+  dontTouch(scalResultSel8)
+  dontTouch(scalResultSel16)
+  dontTouch(scalResultSel32)
+  dontTouch(scalResultSel64)
   dontTouch(vs1Shift)
   dontTouch(shiftResult)
   dontTouch(shift64)

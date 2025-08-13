@@ -2,6 +2,7 @@ package yunsuan.vector.VectorALU
 
 import chisel3._
 import chisel3.util._
+import yunsuan.encoding.Opcode.FixedPointRoundingMode._
 import yunsuan.encoding.Opcode.VIAluOpcode
 import yunsuan.vector.SewOH
 
@@ -554,11 +555,6 @@ class VIAluAdder(xlen: Int = 64) extends Module {
   }
   avgShiftOneSel64 := Cat(isSub ^ cout(7) ^ Mux(isSigned, vs2Head(7) ^ vs1Head(7), false.B), originAddResult.head(63))
   avgShiftOneRoundSel64 := originResult(0)(0)
-
-  def RNU: UInt = 0.U(2.W)
-  def RNE: UInt = 1.U(2.W)
-  def RDN: UInt = 2.U(2.W)
-  def ROD: UInt = 3.U(2.W)
 
   def genRound(in: UInt, rIn: UInt, d: Int): UInt = {
     val (g, r) = (in(0), rIn(d - 1))

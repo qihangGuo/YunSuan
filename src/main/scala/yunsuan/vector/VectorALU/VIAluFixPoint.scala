@@ -83,6 +83,7 @@ class VIAluFixPoint(xlen: Int) extends Module {
   vIAluMisc.io.in.isSigned := isSigned
   vIAluMisc.io.in.isExt := isExt
   vIAluMisc.io.in.isNarrow := isNarrow
+  vIAluMisc.io.in.vxrm := vxrm
 
   private val vdAdderS1 = Wire(UInt(xlen.W))
   private val vdMiscS1 = Wire(UInt(xlen.W))
