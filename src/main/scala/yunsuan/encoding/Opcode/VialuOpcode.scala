@@ -9,6 +9,13 @@ object FixedPointRoundingMode {
   def ROD: UInt = 3.U(2.W)
 }
 
+object FixedPointConst {
+  def unsignedMax: UInt = "hff".U(8.W)
+  def unsignedMin: UInt = 0.U(8.W)
+  def signedMax: UInt = "h7f".U(8.W)
+  def signedMin: UInt = "h80".U(8.W)
+}
+
 class VIAluOpcode extends Bundle {
   val op = UInt(6.W)
   def isAdd: Bool = !op(3) & !op(2) & !op(1) & !op(0) // op === VialuOpcode.vadd

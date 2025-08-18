@@ -2,6 +2,7 @@ package yunsuan.vector.VectorALU
 
 import chisel3._
 import chisel3.util._
+import yunsuan.encoding.Opcode.FixedPointConst._
 import yunsuan.encoding.Opcode.FixedPointRoundingMode._
 import yunsuan.encoding.Opcode.VIAluOpcode
 import yunsuan.vector.{SewOH, UIntSplit}
@@ -22,6 +23,7 @@ class VIAluMiscInput(xlen: Int) extends Bundle {
 class VIAluMiscOutput(xlen: Int) extends Bundle {
   val vd = UInt(xlen.W)
   val narrowVd = UInt((xlen/2).W)
+  val vxsat = UInt(8.W)
 }
 
 class VIAluMisc(xlen: Int = 64) extends Module {
@@ -58,6 +60,7 @@ class VIAluMisc(xlen: Int = 64) extends Module {
   private val isShift = opcode.isShiftLogic
   private val isLeftShiftLogic = opcode.isLeftShiftLogic
   private val isScalShiftLogic = opcode.isScalShiftLogic
+  private val isNClipLogic = isScalShiftLogic // isNarrow & isScalShiftLogic
 
   private val ext = Wire(Vec(8, UInt(8.W)))
   ext(0) := Mux1H(Seq(
@@ -237,8 +240,10 @@ class VIAluMisc(xlen: Int = 64) extends Module {
       RDN -> false.B,
       ROD -> (!g & rIn.orR),
     ))
-    val incOne = in + 1.U
-    Mux(roundUp, incOne, in)
+    val incOne = Wire(UInt((in.getWidth + 1).W))
+    incOne := in + 1.U
+    val out = Mux(roundUp, incOne, in)
+    out.tail(1)
   }
 
   private val scalResultSel8 = Wire(Vec(8, UInt(8.W)))
@@ -280,13 +285,83 @@ class VIAluMisc(xlen: Int = 64) extends Module {
     sel64 -> scalResultSel64,
   ))
 
+  private val nClipResultSel8  = Wire(Vec(4, UInt(8.W)))
+  private val nClipResultSel16 = Wire(Vec(2, UInt(16.W)))
+  private val nClipResultSel32 = Wire(UInt((xlen / 2).W))
+  private val nClipSatSel8  = Wire(Vec(4, Bool()))
+  private val nClipSatSel16 = Wire(Vec(2, Bool()))
+  private val nClipSatSel32 = Wire(Bool())
+  for (i <- 0 until 4) {
+    val upOverflowUnSign = scalResultSel16(i).head(8).orR
+    val signBit = scalResultSel16(i).head(1).asBool
+    val upOverflowSign = scalResultSel16(i).tail(1).head(8).orR
+    val downOverflowSign = !scalResultSel16(i).tail(1).head(8).andR
+    val overflowSign = Mux(signBit, downOverflowSign, upOverflowSign)
+
+    nClipSatSel8(i) := Mux(isSigned, overflowSign, upOverflowUnSign)
+    nClipResultSel8(i) := Mux(isSigned,
+      Mux(overflowSign,
+        Mux(signBit, signedMin, signedMax),
+        scalResultSel16(i).tail(8)),
+      Mux(upOverflowUnSign, unsignedMax, scalResultSel16(i).tail(8)))
+  }
+  for (i <- 0 until 2) {
+    val upOverflowUnSign = scalResultSel32(i).head(16).orR
+    val signBit = scalResultSel32(i).head(1).asBool
+    val upOverflowSign = scalResultSel32(i).tail(1).head(16).orR
+    val downOverflowSign = !scalResultSel32(i).tail(1).head(16).andR
+    val overflowSign = Mux(signBit, downOverflowSign, upOverflowSign)
+
+    nClipSatSel16(i) := Mux(isSigned, overflowSign, upOverflowUnSign)
+    nClipResultSel16(i) := Mux(isSigned,
+      Mux(overflowSign,
+        Mux(signBit, Cat(signedMin, unsignedMin), Cat(signedMax, unsignedMax)),
+        scalResultSel32(i).tail(16)),
+      Mux(upOverflowUnSign, Fill(2, unsignedMax), scalResultSel32(i).tail(16)))
+  }
+  val upOverflowUnSign = scalResultSel64.head(32).orR
+  val signBit = scalResultSel64.head(1).asBool
+  val upOverflowSign = scalResultSel64.tail(1).head(32).orR
+  val downOverflowSign = !scalResultSel64.tail(1).head(32).andR
+  val overflowSign = Mux(signBit, downOverflowSign, upOverflowSign)
+
+  nClipSatSel32 := Mux(isSigned, overflowSign, upOverflowUnSign)
+  nClipResultSel32 := Mux(isSigned,
+    Mux(overflowSign,
+      Mux(signBit, Cat(signedMin, Fill(3, unsignedMin)), Cat(signedMax, Fill(3, unsignedMax))),
+      scalResultSel64.tail(32)),
+    Mux(upOverflowUnSign, Fill(4, unsignedMax), scalResultSel64.tail(32)))
+
+  private val nClipResult = Wire(UInt((xlen / 2).W))
+  nClipResult := Mux1H(Seq(
+    sel8  -> nClipResultSel8.asUInt,
+    sel16 -> nClipResultSel16.asUInt,
+    sel32 -> nClipResultSel32,
+  ))
+  private val nClipSat = Wire(UInt(4.W))
+  nClipSat := Mux1H(Seq(
+    sel8  -> nClipSatSel8.asUInt,
+    sel16 -> nClipSatSel16.asUInt,
+    sel32 -> nClipSatSel32,
+  ))
+
 
   io.out.vd := MuxCase(bitLogicResult, Seq(
     isExt -> extResult,
     isShift -> Mux(isScalShiftLogic, scalResult, shiftResult),
   ))
-  io.out.narrowVd := narrowResult
+  io.out.narrowVd := Mux(isNClipLogic, nClipResult, narrowResult)
+  io.out.vxsat := nClipSat
 
+  dontTouch(isNClipLogic)
+  dontTouch(nClipResult)
+  dontTouch(nClipResultSel8)
+  dontTouch(nClipResultSel16)
+  dontTouch(nClipResultSel32)
+  dontTouch(nClipSatSel8)
+  dontTouch(nClipSatSel16)
+  dontTouch(nClipSatSel32)
+  dontTouch(nClipSat)
   dontTouch(isScalShiftLogic)
   dontTouch(shiftData64)
   dontTouch(shiftData32)

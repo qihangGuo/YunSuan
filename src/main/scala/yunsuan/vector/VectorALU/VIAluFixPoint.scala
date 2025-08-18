@@ -85,22 +85,25 @@ class VIAluFixPoint(xlen: Int) extends Module {
   vIAluMisc.io.in.isNarrow := isNarrow
   vIAluMisc.io.in.vxrm := vxrm
 
+  private val vxsat = Wire(UInt(8.W))
+  vxsat := Mux(isMisc, vIAluMisc.io.out.vxsat, vIAluAdder.io.out.vxsat)
+
   private val vdAdderS1 = Wire(UInt(xlen.W))
   private val vdMiscS1 = Wire(UInt(xlen.W))
   private val isMiscS1 = Wire(Bool())
   private val addCarryCmpMaskS1 = Wire(UInt(8.W))
   private val narrowVdS1 = Wire(UInt((xlen/2).W))
-  private val satS1 = Wire(UInt(8.W))
+  private val vxsatS1 = Wire(UInt(8.W))
 
   vdAdderS1 := RegEnable(vIAluAdder.io.out.vd, valid)
   vdMiscS1 := RegEnable(vIAluMisc.io.out.vd, valid)
   isMiscS1 := GatedValidRegNext(isMisc)
   addCarryCmpMaskS1 := RegEnable(vIAluAdder.io.out.addCarryCmpMask, valid)
   narrowVdS1 := RegEnable(vIAluMisc.io.out.narrowVd, valid)
-  satS1 := RegEnable(vIAluAdder.io.out.vxsat, valid)
+  vxsatS1 := RegEnable(vxsat, valid)
 
   io.out.vd := Mux(isMiscS1, vdMiscS1, vdAdderS1)
   io.out.narrowVd := narrowVdS1
   io.out.addCarryCmpMask := addCarryCmpMaskS1
-  io.out.vxsat := satS1
+  io.out.vxsat := vxsatS1
 }
