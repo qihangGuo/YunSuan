@@ -3,19 +3,14 @@ package yunsuan.vector.v2.Shuffle
 import _root_.circt.stage.FirtoolOption
 import chisel3._
 import chisel3.util._
-import yunsuan.util.ModuleWrapper.{ModuleMux1H, ModuleVec}
 import yunsuan.vector.Common.caseToUIntUtil
 
-class GatherBase(dlen: Int, maxTableNum: Int) extends Module {
+class GatherBase(val vlen: Int, val dlen: Int, maxTableNum: Int) extends Module with GatherConfig {
   require(isPow2(dlen) && dlen >= 64)
   require(isPow2(maxTableNum))
 
   override def desiredName: String = super.desiredName + s"_dlen${dlen}b_table${maxTableNum}"
 
-  val dlenb = dlen / 8
-  val MinDataWidth = 8
-  val NumElem = dlen / MinDataWidth
-  val IndexWidth = log2Ceil(dlen)
   val LookUpIndexWidth = log2Ceil(NumElem)
 
   val in = IO(Input(new Bundle {
@@ -23,12 +18,11 @@ class GatherBase(dlen: Int, maxTableNum: Int) extends Module {
     val table = Vec(NumElem, UInt(MinDataWidth.W))
     val indexValid = Vec(NumElem, Bool())
     val index = Vec(NumElem, UInt(IndexWidth.W))
-    val indexGeVlmax = Vec(NumElem, Bool())
     val lmul = new GatherLmulBundle
   }))
 
   val out = IO(Output(new Bundle {
-    // found or overflow
+    // found
     val resultValid = Vec(NumElem, Bool())
     val result = Vec(NumElem, UInt(MinDataWidth.W))
     val inactive = Vec(NumElem, Bool())
@@ -38,7 +32,7 @@ class GatherBase(dlen: Int, maxTableNum: Int) extends Module {
   val geRealVlmax = Wire(Vec(NumElem, Bool()))
 
   for (i <- 0 until NumElem) {
-    geRealVlmax(i) := ModuleMux1H(Seq(
+    geRealVlmax(i) := Mux1H(Seq(
       in.lmul.mf8 -> (in.index(i).head(6) =/= 0.U),
       in.lmul.mf4 -> (in.index(i).head(5) =/= 0.U),
       in.lmul.mf2 -> (in.index(i).head(4) =/= 0.U),
@@ -51,19 +45,19 @@ class GatherBase(dlen: Int, maxTableNum: Int) extends Module {
 
   val found    = Wire(Vec(NumElem, Bool()))
   val notfound = Wire(Vec(NumElem, Bool()))
-  val overflow = Wire(Vec(NumElem, Bool()))
   val inactive = Wire(Vec(NumElem, Bool()))
 
-  val indices = VecInit((overflow zip in.index).map { case (msb, idx) => Cat(msb, idx.take(LookUpIndexWidth)) })
+  val indices = VecInit(in.index.map { case idx => idx.take(LookUpIndexWidth) })
 
   for (i <- 0 until NumElem) {
-    found(i)    := in.indexValid(i) && !in.indexGeVlmax(i) && !geRealVlmax(i) && in.index(i).drop(LookUpIndexWidth) === in.tableIdx
-    notfound(i) := in.indexValid(i) && !in.indexGeVlmax(i) && !geRealVlmax(i) && in.index(i).drop(LookUpIndexWidth) =/= in.tableIdx
-    overflow(i) := in.indexValid(i) && (in.indexGeVlmax(i) || geRealVlmax(i))
+    // fill res
+    found(i)    := in.indexValid(i) && in.index(i).drop(LookUpIndexWidth) === in.tableIdx
+    // fill idx
+    notfound(i) := in.indexValid(i) && in.index(i).drop(LookUpIndexWidth) =/= in.tableIdx
     inactive(i) := !in.indexValid(i)
 
-    out.resultValid(i) := found(i) || overflow(i)
-    out.result(i) := ModuleVec(in.table)(indices(i))
+    out.resultValid(i) := found(i)
+    out.result(i) := in.table(indices(i))
   }
 
   out.notfound := notfound
@@ -71,11 +65,12 @@ class GatherBase(dlen: Int, maxTableNum: Int) extends Module {
 }
 
 class GatherIndexBundle(NumElem: Int, IndexWidth: Int) extends Bundle {
-  // if 1, this index need be looked up in GatherBase
-  // may fill idx, zero, res
+  // if true, this index need be looked up in GatherBase.
+  // And the result may be filled with res or idx(if out of range of the table)
   val indexValid = Vec(NumElem, Bool())
   val index = Vec(NumElem, UInt(IndexWidth.W))
-  val indexGeVlmax = Vec(NumElem, Bool())
+  val fillZeros = Vec(NumElem, Bool())
+  val fillScala = Vec(NumElem, Bool())
 }
 
 object GatherBaseMain extends App {
@@ -91,7 +86,7 @@ object GatherBaseMain extends App {
 
   (new chisel3.stage.ChiselStage).execute(
     Array("--target-dir", "build/vector") ++ args,
-    chisel3.stage.ChiselGeneratorAnnotation(() => new GatherBase(128, 8)) +: firtoolAnno
+    chisel3.stage.ChiselGeneratorAnnotation(() => new GatherBase(128, 128, 8)) +: firtoolAnno
   )
 
   println("done")

@@ -41,6 +41,8 @@ object Common {
     def byte1s = "hff".U
 
     def VdIdx: UInt = UInt(VdIdxWidth.W)
+
+    val MinDataWidth = 8
   }
 
   /**
@@ -279,6 +281,10 @@ object Common {
     def compress(mask: UInt): Vec[Valid[T]] = {
       VectorShuffle.Compress(mask, vec)
     }
+
+    def takeAsVec(n: Int): Vec[T] = {
+      VecInit(this.vec.take(n))
+    }
   }
 
   implicit def caseToVecUtilType[T <: Data](v: Vec[T]): VecUtilType[T] = new VecUtilType[T](v)
@@ -289,8 +295,11 @@ object Common {
     val length = uint.getWidth
 
     def take(n: Int): UInt = {
-      require(n <= length, s"Can not take $n bits, since the operand is $length bits width")
-      uint(n - 1, 0)
+      require(0 <= n && n <= length, s"Can not take $n bits, since the operand is $length bits width")
+      if (n == 0)
+        0.U(0.W)
+      else
+        uint(n - 1, 0)
     }
 
     def drop(n: Int): UInt = {
@@ -319,6 +328,12 @@ object Common {
     def isOneOf[T](t: T)(a: T => UInt, seq: (T => UInt)*): Bool = this.isOneOf(a(t) +: seq.map(_(t)))
 
     def bitReverse: UInt = Cat(this.uint.asBools)
+
+    def bitDup(n: Int): UInt = this.uint.asBools.map(b => Fill(n, b)).reverse.fold(0.U(0.W))(_ ## _)
+
+    def map[T](f: Bool => T): Seq[T] = {
+      uint.asBools.map(f)
+    }
   }
 
   implicit def caseToUIntUtil(uint: UInt): UIntUtil = new UIntUtil(uint)

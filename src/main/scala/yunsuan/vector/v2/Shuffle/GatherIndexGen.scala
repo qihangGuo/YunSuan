@@ -6,13 +6,11 @@ import chisel3.util._
 import yunsuan.util.ModuleWrapper.{ModuleMux1H, ModuleVec}
 import yunsuan.vector.Common._
 
-class GatherIndexGen(vlen: Int, dlen: Int, MinDataWidth: Int = 8) extends Module {
+class GatherIndexGen(val vlen: Int, val dlen: Int, MinDataWidth: Int = 8) extends Module with GatherConfig {
   require(isPow2(dlen) && dlen >= 64)
 
   override def desiredName: String = super.desiredName + s"_${dlen}b"
 
-  val NumElem = dlen / MinDataWidth
-  val IndexWidth = log2Ceil(dlen)
   val E64Vlmax = dlen * 8 / 64
   val E32Vlmax = dlen * 8 / 32
   val E16Vlmax = dlen * 8 / 16
@@ -23,6 +21,7 @@ class GatherIndexGen(vlen: Int, dlen: Int, MinDataWidth: Int = 8) extends Module
   val E8ValidBits  = log2Ceil(E8Vlmax)
 
   val in = IO(Input(ValidIO(new Bundle {
+    val isGatherEI16 = Bool()
     val uopIdx = UInt(log2Ceil(vlen / dlen * 8).W)
     val lmul = new GatherLmulBundle
     val sew = new GatherSewBundle
@@ -31,7 +30,10 @@ class GatherIndexGen(vlen: Int, dlen: Int, MinDataWidth: Int = 8) extends Module
     val vs1 = UInt(dlen.W)
     val mask = UInt((dlen / MinDataWidth).W) // 1bit per MinWidth Data
   })))
-  val out = IO(Output(ValidIO(new GatherIndexBundle(NumElem, IndexWidth))))
+  val out = IO(Output(new Bundle {
+    val gather = ValidIO(new GatherIndexBundle(NumElem, IndexWidth))
+    val gatherei16 = ValidIO(new Bundle {})
+  }))
 
   val sew = in.bits.sew
   val ei = in.bits.ei
@@ -41,11 +43,6 @@ class GatherIndexGen(vlen: Int, dlen: Int, MinDataWidth: Int = 8) extends Module
   val e32Vs1 = in.bits.vs1.to32bitVec
   val e16Vs1 = in.bits.vs1.to16bitVec
   val e8Vs1  = in.bits.vs1.to8bitVec
-
-  val e64GeVlmax = e64Vs1.map(_ >= (dlen * 8 / 64) .U)
-  val e32GeVlmax = e32Vs1.map(_ >= (dlen * 8 / 32) .U)
-  val e16GeVlmax = e16Vs1.map(_ >= (dlen * 8 / 16) .U)
-  val e8GeVlmax  = e8Vs1 .map(_ >= (dlen * 8 /  8) .U)
 
   val uopIdx = in.bits.uopIdx
 
@@ -124,8 +121,31 @@ class GatherIndexGen(vlen: Int, dlen: Int, MinDataWidth: Int = 8) extends Module
   val e32ei16 = dontTouch(sew.e32 && ei.e16)
   val e8ei16  = dontTouch(sew.e8  && ei.e16)
 
-  for (i <- out.bits.index.indices) {
-    out.bits.index(i) := ModuleMux1H(Seq(
+  val geVlmax = Wire(Vec(NumElem, Bool()))
+  for (i <- 0 until NumElem) {
+    // index >= vlmax
+    geVlmax(i) := Mux1H(Seq(
+      lmul.mf8 -> (out.gather.bits.index(i).head(6) =/= 0.U),
+      lmul.mf4 -> (out.gather.bits.index(i).head(5) =/= 0.U),
+      lmul.mf2 -> (out.gather.bits.index(i).head(4) =/= 0.U),
+      lmul.m1  -> (out.gather.bits.index(i).head(3) =/= 0.U),
+      lmul.m2  -> (out.gather.bits.index(i).head(2) =/= 0.U),
+      lmul.m4  -> (out.gather.bits.index(i).head(1) =/= 0.U),
+      // in m8 configuration, index will never greater than or equal to vlmax
+    ))
+  }
+
+  out.gather.valid := in.valid && !in.bits.isGatherEI16
+  out.gatherei16.valid := in.valid && in.bits.isGatherEI16
+
+  for (i <- out.gather.bits.indexValid.indices) {
+    out.gather.bits.indexValid(i) := !geVlmax(i)
+    out.gather.bits.fillZeros(i) := geVlmax(i)
+    out.gather.bits.fillScala(i) := false.B
+  }
+
+  for (i <- out.gather.bits.index.indices) {
+    out.gather.bits.index(i) := Mux1H(Seq(
       e64ei64 -> e64ei64Idx(i),
       e32ei32 -> e32ei32Idx(i),
       e16ei16 -> e16ei16Idx(i),
@@ -136,43 +156,6 @@ class GatherIndexGen(vlen: Int, dlen: Int, MinDataWidth: Int = 8) extends Module
       e8ei16  -> e8ei16Idx(i),
     ))
   }
-
-  val geRealVlmax = Wire(Vec(NumElem, Bool()))
-  for (i <- 0 until NumElem) {
-    geRealVlmax(i) := ModuleMux1H(Seq(
-      lmul.mf8 -> (out.bits.index(i).head(6) =/= 0.U),
-      lmul.mf4 -> (out.bits.index(i).head(5) =/= 0.U),
-      lmul.mf2 -> (out.bits.index(i).head(4) =/= 0.U),
-      lmul.m1  -> (out.bits.index(i).head(3) =/= 0.U),
-      lmul.m2  -> (out.bits.index(i).head(2) =/= 0.U),
-      lmul.m4  -> (out.bits.index(i).head(1) =/= 0.U),
-      // in m8 configuration, index will never greater than or equal to vlmax
-    ))
-  }
-
-
-  val usedMaskVf2 = ModuleVec(maskVf2)(uopIdx.take(1))
-  val usedMaskVf4 = ModuleVec(maskVf4)(uopIdx.take(2))
-
-  for (i <- out.bits.indexValid.indices) {
-    out.bits.indexValid(i) := ModuleMux1H(Seq(
-      (e64ei64 || e32ei32 || e16ei16 || e8ei8) -> maskVf1(i),
-      (e32ei16 || e8ei16) -> usedMaskVf2(i / 2),
-      (e64ei16) -> usedMaskVf4(i / 4),
-    ))
-  }
-
-  for (i <- out.bits.indexGeVlmax.indices) {
-    out.bits.indexGeVlmax(i) := geRealVlmax(i)
-//    out.bits.indexGeVlmax(i) := ModuleMux1H(Seq(
-//      sew.e64 -> e64GeVlmax(i / (64 / MinDataWidth)),
-//      sew.e32 -> e32GeVlmax(i / (32 / MinDataWidth)),
-//      sew.e16 -> e16GeVlmax(i / (16 / MinDataWidth)),
-//      sew.e8  -> e8GeVlmax (i / ( 8 / MinDataWidth)),
-//    ))
-  }
-
-  out.valid := in.valid
 }
 
 object GatherIndexGenMain extends App {

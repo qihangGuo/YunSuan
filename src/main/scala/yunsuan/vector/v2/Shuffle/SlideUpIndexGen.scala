@@ -9,17 +9,14 @@ import _root_.circt.stage.FirtoolOption
  * This module is used to generate the indices for slideup instruction.
  * The unchanged part is handled in this module, but tail part is not handled.
  */
-class SlideUpIndexGen(vlen: Int, dlen: Int) extends Module {
+class SlideUpIndexGen(val vlen: Int, val dlen: Int) extends Module with GatherConfig {
   require(isPow2(dlen) && dlen >= 64)
 
   override def desiredName: String = super.desiredName + s"_${dlen}b"
 
-  val MinDataWidth = 8
-  val NumElem = dlen / MinDataWidth
-  val IndexWidth = log2Ceil(dlen)
-  val VlWidth = log2Ceil(vlen + 1)
-
   val in = IO(Input(ValidIO(new Bundle {
+    val isSlide1Up = Bool()
+    val tableIdx = UInt(TableIdxWidth.W)
     val sew = new GatherSewBundle
     // if slideNum is greater than or equal to dlen
     val offsetOverflow = Bool()
@@ -27,7 +24,10 @@ class SlideUpIndexGen(vlen: Int, dlen: Int) extends Module {
     val vl = UInt(VlWidth.W)
   })))
 
-  val out = IO(Output(ValidIO(new GatherIndexBundle(NumElem, IndexWidth))))
+  val out = IO(Output(new Bundle {
+    val slideup = ValidIO(new GatherIndexBundle(NumElem, IndexWidth))
+    val slide1up = ValidIO(new GatherIndexBundle(NumElem, IndexWidth))
+  }))
 
   val sew = in.bits.sew
   val vl = in.bits.vl
@@ -48,24 +48,46 @@ class SlideUpIndexGen(vlen: Int, dlen: Int) extends Module {
     sew.e64 -> Cat(offset.tail(3), 0.U(3.W)),
   ))
 
-  out.valid := in.valid
+  private val iIsZero = VlCompareBitVecModule(vlen, dlen, MinDataWidth)(
+    0.U,
+    sew,
+    in.bits.tableIdx,
+    (i, vl) => i === vl,
+    "EqualZero",
+  )
+
+  out.slideup.valid := in.valid && !in.bits.isSlide1Up
   // i < min(vl, max(vstart, offset))
   // Since vstart is always 0, we get
   // i < min(vl, offset) <=>
   // i < vl && i < offset
-  for (i <- out.bits.index.indices) {
-    out.bits.index(i) := Mux(
+  for (i <- out.slideup.bits.index.indices) {
+    out.slideup.bits.index(i) := Mux(
       offsetOverflow || i.U < e8Vl && i.U < e8Off,
       i.U,
       i.U - e8Off,
     )
+    out.slideup.bits.indexValid(i) := true.B
+    out.slideup.bits.fillZeros(i) := false.B
+    out.slideup.bits.fillScala(i) := false.B
   }
+  out.slideup.bits.indexValid.foreach(_ := true.B)
 
-
-  out.bits.indexGeVlmax.foreach(_ := false.B)
+  out.slide1up.valid := in.valid && in.bits.isSlide1Up
+  for (i <- out.slide1up.bits.index.indices) {
+    out.slide1up.bits.index(i) := Mux1H(Seq(
+      sew.e8  -> (i - 1).max(0).U,
+      sew.e16 -> (i - 2).max(0).U,
+      sew.e32 -> (i - 4).max(0).U,
+      sew.e64 -> (i - 8).max(0).U,
+    ))
+    out.slide1up.bits.indexValid(i) := !iIsZero(i)
+    out.slide1up.bits.fillScala(i) := iIsZero(i)
+    out.slide1up.bits.fillZeros(i) := false.B
+  }
 }
 
-object SlideIndexGenMain extends App {
+object SlideUpIndexGenMain extends App {
   println("Generating the SlideIndexGen hardware")
 
   val firtoolOpts = Array(
