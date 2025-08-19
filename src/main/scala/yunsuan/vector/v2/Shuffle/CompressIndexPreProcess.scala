@@ -17,7 +17,7 @@ class CompressIndexGen(vlen: Int, dlen: Int) extends Module {
   private val vlenb = vlen / 8
   private val dlenbBits = log2Ceil(dlenb)
   private val MinDataWidth = 8
-  private val NumElem = vlen / MinDataWidth
+  private val NumElem = dlen / MinDataWidth
   private val IndexWidth = log2Ceil(vlen)
   private val SplittedParts = 8 * vlen / dlen
   private val vlWidth = log2Ceil(vlen + 1)
@@ -27,6 +27,7 @@ class CompressIndexGen(vlen: Int, dlen: Int) extends Module {
     val uopIdx = UInt(log2Ceil(SplittedParts).W)
     val byteMask = UInt(vlen.W)
     val data = Vec(NumElem, UInt(MinDataWidth.W))
+    val vs3 = UInt(dlen.W)
   }))
 
   val out = IO(Output(new Bundle {
@@ -34,12 +35,15 @@ class CompressIndexGen(vlen: Int, dlen: Int) extends Module {
     val validVec = Vec(SplittedParts, Bool())
     val uopIdx = UInt(log2Ceil(SplittedParts).W)
     val data = Vec(NumElem, UInt(MinDataWidth.W))
+    val vs3 = UInt(dlen.W)
     val index = new GatherIndexBundle(NumElem, IndexWidth)
     val count1s = UInt(vlWidth.W)
   }))
 
   val indexPreProcess = Module(new CompressIndexPreProcess(vlen = vlen, dlen = dlen))
   val dataPreProcess = Module(new CompressDataPreProcess(vlen = vlen, dlen = dlen))
+
+  private val vs3Reg = RegEnable(in.vs3, in.valid)
 
   private val leadingSums = indexPreProcess.out.leadingSums
 
@@ -88,6 +92,7 @@ class CompressIndexGen(vlen: Int, dlen: Int) extends Module {
   out.valid := validRegVec.asUInt.orR
 
   out.data := RotateUp(VecInit(preProcessedDataReg.map(_.bits)), lzaForDataRotateLZA(uopIdxReg))
+  out.vs3 := vs3Reg
   out.count1s := leadingSumsReg.last
 }
 

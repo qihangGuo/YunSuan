@@ -83,7 +83,11 @@ class GatherArray(
     "LessThanVl",
   )
 
-  private val gatherModOldTable = vs3.splitToVecByWidth(MinDataWidth)
+  private val gatherModOldTable = Mux(
+    compressIndexGen.out.valid,
+    compressIndexGen.out.vs3.splitToVecByWidth(MinDataWidth),
+    vs3.splitToVecByWidth(MinDataWidth),
+  )
 
   private val elemActive = Wire(Vec(NumElem, Bool()))
   private val elemInactive = Wire(Vec(NumElem, Bool()))
@@ -135,6 +139,7 @@ class GatherArray(
   compressIndexGen.in.uopIdx := uopIdx
   compressIndexGen.in.byteMask := in.bits.srcMask
   compressIndexGen.in.data := inTable
+  compressIndexGen.in.vs3 := vs3
 
   gatherIndexGen.in.valid := in.valid && (op.vrgather_v || op.vrgatherei16)
   gatherIndexGen.in.bits.isGatherEI16 := op.vrgatherei16
