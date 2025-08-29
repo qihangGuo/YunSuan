@@ -80,6 +80,7 @@ class VIAluFixPoint(xlen: Int) extends Module {
   vIAluMisc.io.in.vsew := vsew
   vIAluMisc.io.in.vs2 := vs2
   vIAluMisc.io.in.vs1 := vs1
+  vIAluMisc.io.in.widen := widen
   vIAluMisc.io.in.isSigned := isSigned
   vIAluMisc.io.in.isExt := isExt
   vIAluMisc.io.in.isNarrow := isNarrow

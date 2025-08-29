@@ -176,13 +176,13 @@ package object yunsuan {
     def vcpop_v     = LiteralCat(FMT.VVV  , UINT, VialuOpcode.vcpop)  // "b00_0_101110".U(OpTypeWidth.W) // vcpop
     def vrol_vv     = LiteralCat(FMT.VVV  , UINT, VialuOpcode.vrol)   // "b00_0_110100".U(OpTypeWidth.W) // vrol
     def vror_vv     = LiteralCat(FMT.VVV  , UINT, VialuOpcode.vror)   // "b00_0_110101".U(OpTypeWidth.W) // vror
-    def vwsll_vv    = LiteralCat(FMT.WVW  , UINT, VialuOpcode.vsll)   // "b10_0_101001".U(OpTypeWidth.W) // vsll
+    def vwsll_vv    = LiteralCat(FMT.VVW  , UINT, VialuOpcode.vsll)   // "b10_0_101000".U(OpTypeWidth.W) // vsll
 
     def getOpcode(fuOpType: UInt) : UInt = fuOpType(5, 0)
     def isMisc(fuOpType: UInt) : Bool = fuOpType(5)
     def isSigned(fuOpType: UInt) : Bool = fuOpType(6)
     def getFormat(fuOpType: UInt) : UInt = fuOpType(8, 7)
-    def isAddSub(fuOpType: UInt) : Bool = Seq(VialuOpcode.vadd, VialuOpcode.vsub)
+    def isAddSub(fuOpType: UInt) : Bool = Seq(VialuOpcode.vadd, VialuOpcode.vsub, VialuOpcode.vsll)
       .map(_ === getOpcode(fuOpType))
       .reduce(_ || _)
     def isAddCarry(fuOpType: UInt) : Bool =

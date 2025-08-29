@@ -6,6 +6,7 @@ import yunsuan.encoding.Opcode.FixedPointConst._
 import yunsuan.encoding.Opcode.FixedPointRoundingMode._
 import yunsuan.encoding.Opcode.VIAluOpcode
 import yunsuan.vector.{SewOH, UIntSplit}
+import yunsuan.util._
 
 import math.pow
 
@@ -14,6 +15,7 @@ class VIAluMiscInput(xlen: Int) extends Bundle {
   val vsew = UInt(2.W)
   val vs2 = UInt(xlen.W)
   val vs1 = UInt(xlen.W)
+  val widen = Bool()
   val isSigned = Bool()
   val isExt = ValidIO(new ExtInfo)
   val isNarrow = Bool()
@@ -36,6 +38,7 @@ class VIAluMisc(xlen: Int = 64) extends Module {
   private val vsew = io.in.vsew
   private val vs2 = io.in.vs2
   private val vs1 = io.in.vs1
+  private val widen = io.in.widen
   private val isSigned = io.in.isSigned
   private val isExt = io.in.isExt.valid
   private val isVf2 = io.in.isExt.bits.isVf2
@@ -59,8 +62,17 @@ class VIAluMisc(xlen: Int = 64) extends Module {
   private val isVxnor = opcode.isVxnor
   private val isShift = opcode.isShiftLogic
   private val isLeftShiftLogic = opcode.isLeftShiftLogic
-  private val isScalShiftLogic = opcode.isScalShiftLogic
-  private val isNClipLogic = isScalShiftLogic // isNarrow & isScalShiftLogic
+  private val isScalVro = opcode.isScalVro
+  private val isNotVro = opcode.isNotVro
+  private val isScal = isShift & isScalVro & isNotVro
+  private val isNClip = isNarrow & isScal
+  private val isZvbbOthers = opcode.isZvbbOthers
+  private val isVcpop = opcode.isVcpop
+  private val isVbrev = opcode.isVbrev
+  private val isVbrev8 = opcode.isVbrev8
+  private val isVrev8 = opcode.isVrev8
+  private val isCountZero = opcode.isCountZero
+  private val isCtz = opcode.isCtz
 
   private val ext = Wire(Vec(8, UInt(8.W)))
   ext(0) := Mux1H(Seq(
@@ -345,15 +357,277 @@ class VIAluMisc(xlen: Int = 64) extends Module {
     sel32 -> nClipSatSel32,
   ))
 
+  def shiftRotateLeftOneElement(data: UInt, shift: UInt, sew: Int): UInt = {
+    sew match {
+      case 8   => doShiftRotateLeft(data, shift(2, 0)).asUInt
+      case 16  => doShiftRotateLeft(data, shift(3, 0)).asUInt
+      case 32  => doShiftRotateLeft(data, shift(4, 0)).asUInt
+      case 64  => doShiftRotateLeft(data, shift(5, 0)).asUInt
+    }
+  }
+
+  def shiftRotateRightOneElement(data: UInt, shift: UInt, sew: Int): UInt = {
+    sew match {
+      case 8  => doShiftRotateRight(data, shift(2, 0)).asUInt
+      case 16 => doShiftRotateRight(data, shift(3, 0)).asUInt
+      case 32 => doShiftRotateRight(data, shift(4, 0)).asUInt
+      case 64 => doShiftRotateRight(data, shift(5, 0)).asUInt
+    }
+  }
+
+  def shiftRotateLeft(data: UInt, shift: UInt, sew: Int): UInt = {
+    Cat(UIntSplit(vs2, sew).zip(UIntSplit(vs1, sew)).map { case (vs2, vs1) =>
+      shiftRotateLeftOneElement(vs2, vs1, sew)}.reverse)
+  }
+
+  def shiftRotateRight(data: UInt, shift: UInt, sew: Int): UInt = {
+    Cat(UIntSplit(vs2, sew).zip(UIntSplit(vs1, sew)).map { case (vs2, vs1) =>
+      shiftRotateRightOneElement(vs2, vs1, sew)}.reverse)
+  }
+
+  private val vroShiftRotateLeft64 = shiftRotateLeft(vs2, vs1, 64)
+  private val vroShiftRotateLeft32 = shiftRotateLeft(vs2, vs1, 32)
+  private val vroShiftRotateLeft16 = shiftRotateLeft(vs2, vs1, 16)
+  private val vroShiftRotateLeft8  = shiftRotateLeft(vs2, vs1, 8)
+  private val vroShiftRotateRight64 = shiftRotateRight(vs2, vs1, 64)
+  private val vroShiftRotateRight32 = shiftRotateRight(vs2, vs1, 32)
+  private val vroShiftRotateRight16 = shiftRotateRight(vs2, vs1, 16)
+  private val vroShiftRotateRight8  = shiftRotateRight(vs2, vs1, 8)
+
+
+  private val vroShift64 = Mux(isLeftShiftLogic, vroShiftRotateLeft64, vroShiftRotateRight64)
+  private val vroShift32 = Mux(isLeftShiftLogic, vroShiftRotateLeft32, vroShiftRotateRight32)
+  private val vroShift16 = Mux(isLeftShiftLogic, vroShiftRotateLeft16, vroShiftRotateRight16)
+  private val vroShift8  = Mux(isLeftShiftLogic, vroShiftRotateLeft8,  vroShiftRotateRight8)
+
+  private val vroShiftResult = Wire(UInt(xlen.W))
+  vroShiftResult := Mux1H(Seq(
+    sel8  -> vroShift8,
+    sel16 -> vroShift16,
+    sel32 -> vroShift32,
+    sel64 -> vroShift64,
+  ))
+
+  def CSA3to1(a: UInt, b: UInt, cin: UInt): (UInt, UInt) = {
+    val S = a ^ b ^ cin
+    val C = a & b | a & cin | b & cin
+    (S, C)
+  }
+
+  def PopCount8(in: UInt): UInt = {
+    val (l1S1, l1C1) = CSA3to1(in(0), in(1), in(2))
+    val (l1S2, l1C2) = CSA3to1(in(3), in(4), in(5))
+    val l1S3 = in(6) ^ in(7)
+    val l1C3 = in(6) & in(7)
+
+    val (l2S1, l2C1) = CSA3to1(l1S1, l1S2, l1S3)
+    val (l2S2, l2C2) = CSA3to1(l1C1, l1C2, l1C3)
+
+    val count = Wire(Vec(4, Bool()))
+    count(0) := l2S1
+    count(1) := l2C1 ^ l2S2
+    count(2) := !l2S2 & l2C2 | !l2C1 & l2C2 | l2C1 & l2S2 & !l2C2
+    count(3) := l2C1 & l2S2 & l2C2
+    count.asUInt
+  }
+
+  private val pop8  = Wire(Vec(8, UInt(8.W)))
+  private val pop16 = Wire(Vec(4, UInt(16.W)))
+  private val pop32 = Wire(Vec(2, UInt(32.W)))
+  private val pop64 = Wire(UInt(xlen.W))
+  for (i <- 0 until 8) {
+    pop8(i) := PopCount8(vs2(i * 8 + 7, i * 8))
+  }
+  for (i <- 0 until 4) {
+    pop16(i) := pop8(i * 2 + 1)(3, 0) +& pop8(i * 2)(3, 0)
+  }
+  for (i <- 0 until 2) {
+    pop32(i) := pop16(i * 2 + 1)(4, 0) +& pop16(i * 2)(4, 0)
+  }
+  pop64 := pop32(1)(5, 0) +& pop32(0)(5, 0)
+
+  private val popResult = Wire(UInt(xlen.W))
+  popResult := Mux1H(Seq(
+    sel8  -> pop8.asUInt,
+    sel16 -> pop16.asUInt,
+    sel32 -> pop32.asUInt,
+    sel64 -> pop64
+  ))
+
+  private val brevResultSel8  = Wire(Vec(8, UInt(8.W)))
+  private val brevResultSel16 = Wire(Vec(4, UInt(16.W)))
+  private val brevResultSel32 = Wire(Vec(2, UInt(32.W)))
+  private val brevResultSel64 = Wire(UInt(64.W))
+
+  for (i <- 0 until 8) {
+    brevResultSel8(i) := Cat(vs2(i * 8 + 7, i * 8).asBools)
+  }
+  for (i <- 0 until 4) {
+    brevResultSel16(i) := Cat(vs2(i * 16 + 15, i * 16).asBools)
+  }
+  for (i <- 0 until 2) {
+    brevResultSel32(i) := Cat(vs2(i * 32 + 31, i * 32).asBools)
+  }
+  brevResultSel64 := vs2Reverse
+
+  private val brevResult = Wire(UInt(xlen.W))
+  brevResult := Mux1H(Seq(
+    sel8  -> brevResultSel8.asUInt,
+    sel16 -> brevResultSel16.asUInt,
+    sel32 -> brevResultSel32.asUInt,
+    sel64 -> brevResultSel64.asUInt,
+  ))
+
+  private val brev8Result = Wire(UInt(xlen.W))
+  brev8Result := brevResultSel8.asUInt
+
+  private val rev8ResultSel16 = Wire(Vec(4, Vec(2, UInt(8.W))))
+  private val rev8ResultSel32 = Wire(Vec(2, Vec(4, UInt(8.W))))
+  private val rev8ResultSel64 = Wire(Vec(8, UInt(8.W)))
+  private val rev8ResultSel16Tmp = Wire(Vec(4, Vec(2, UInt(8.W))))
+  private val rev8ResultSel32Tmp = Wire(Vec(2, Vec(4, UInt(8.W))))
+  private val rev8ResultSel64Tmp = Wire(Vec(8, UInt(8.W)))
+  rev8ResultSel16Tmp := vs2.asTypeOf(rev8ResultSel16Tmp)
+  rev8ResultSel32Tmp := vs2.asTypeOf(rev8ResultSel32Tmp)
+  rev8ResultSel64Tmp := vs2.asTypeOf(rev8ResultSel64Tmp)
+  for (i <- 0 until 4) {
+    for (j <- 0 until 2) {
+      rev8ResultSel16(i)(1 - j) := rev8ResultSel16Tmp(i)(j)
+    }
+  }
+  for (i <- 0 until 2) {
+    for (j <- 0 until 4) {
+      rev8ResultSel32(i)(3 - j) := rev8ResultSel32Tmp(i)(j)
+    }
+  }
+  for (i <- 0 until 8) {
+    rev8ResultSel64(7 - i) := rev8ResultSel64Tmp(i)
+  }
+
+  private val rev8Result = Wire(UInt(xlen.W))
+  rev8Result := Mux1H(Seq(
+    sel8  -> vs2,
+    sel16 -> rev8ResultSel16.asUInt,
+    sel32 -> rev8ResultSel32.asUInt,
+    sel64 -> rev8ResultSel64.asUInt,
+  ))
+
+  private val revResult = Wire(UInt(xlen.W))
+  revResult := Mux1H(Seq(
+    isVcpop  -> popResult,
+    isVbrev  -> brevResult,
+    isVbrev8 -> brev8Result,
+    isVrev8  -> rev8Result,
+  ))
+
+  private val leadZeroIn = Mux(isCtz, brevResultSel8.asUInt, vs2)
+  private val lzc = Lzc(leadZeroIn, 1)
+
+  private val clzResultSel8  = Wire(Vec(8, UInt(8.W)))
+  private val clzResultSel16 = Wire(Vec(4, UInt(16.W)))
+  private val clzResultSel32 = Wire(Vec(2, UInt(32.W)))
+  private val clzResultSel64 = Wire(UInt(64.W))
+
+  for (i <- 0 until 8) {
+    clzResultSel8(i) := lzc.io.out8.get(i)
+  }
+  for (i <- 0 until 4) {
+    clzResultSel16(i) := lzc.io.out16.get(i)
+  }
+  for (i <- 0 until 2) {
+    clzResultSel32(i) := lzc.io.out32.get(i)
+  }
+  clzResultSel64 := lzc.io.out64.get
+
+  private val leadZeroResult = Wire(UInt(xlen.W))
+  leadZeroResult := Mux1H(Seq(
+    sel8  -> clzResultSel8.asUInt,
+    sel16 -> clzResultSel16.asUInt,
+    sel32 -> clzResultSel32.asUInt,
+    sel64 -> clzResultSel64.asUInt,
+  ))
+
+  private val vs2WidenVec = Wire(Vec(8, UInt(8.W)))
+  private val vs1WidenVec = Wire(Vec(4, UInt(8.W)))
+  private val vs2WidenWire = Wire(UInt(xlen.W))
+
+  vs2WidenVec(0) := vs2(7, 0)
+  vs2WidenVec(1) := Mux(sel8, 0.U, vs2(15, 8))
+  vs2WidenVec(2) := Mux1H(Seq(
+    sel8  -> vs2(15, 8),
+    sel16 -> 0.U,
+    sel32 -> vs2(23, 16),
+  ))
+  vs2WidenVec(3) := Mux(sel32, vs2(31, 24), 0.U)
+  vs2WidenVec(4) := Mux(sel32, 0.U, vs2(23, 16))
+  vs2WidenVec(5) := Mux(sel16, vs2(31, 24), 0.U)
+  vs2WidenVec(6) := Mux(sel8,  vs2(31, 24), 0.U)
+  vs2WidenVec(7) := 0.U
+
+  vs1WidenVec(0) := vs1(7, 0)
+  vs1WidenVec(1) := Mux(sel8, vs1(15, 8), 0.U)
+  vs1WidenVec(2) := Mux(sel32, 0.U, vs1(23, 16))
+  vs1WidenVec(3) := Mux(sel8,  vs1(31, 24), 0.U)
+
+  vs2WidenWire := vs2WidenVec.asUInt
+
+  private val vwsllVs2Sel8  = Wire(Vec(4, UInt(16.W)))
+  private val vwsllVs2Sel16 = Wire(Vec(2, UInt(32.W)))
+  private val vwsllVs2Sel32 = Wire(UInt(64.W))
+
+  for (i <- 0 until 4) {
+    vwsllVs2Sel8(i) := Cat(vs2WidenWire(i * 16 + 15, i * 16).asBools)
+  }
+  for (i <- 0 until 2) {
+    vwsllVs2Sel16(i) := Cat(vs2WidenWire(i * 32 + 31, i * 32).asBools)
+  }
+  vwsllVs2Sel32 := Cat(vs2WidenWire.asBools)
+
+  private val vwsllResultSel8 = Wire(Vec(4, UInt(16.W)))
+  private val vwsllResultSel16 = Wire(Vec(2, UInt(32.W)))
+  private val vwsllResultSel32 = Wire(UInt(64.W))
+
+  for (i <- 0 until 4) {
+    vwsllResultSel8(i) := Cat(shiftOneElement(vwsllVs2Sel8(i), vs1WidenVec(i), 16)._1.asBools)
+  }
+  for (i <- 0 until 2) {
+    vwsllResultSel16(i) := Cat(shiftOneElement(vwsllVs2Sel16(i), vs1WidenVec(i * 2), 32)._1.asBools)
+  }
+  vwsllResultSel32 := Cat(shiftOneElement(vwsllVs2Sel32, vs1WidenVec(0), 64)._1.asBools)
+
+  private val vwsllResult = Wire(UInt(xlen.W))
+  vwsllResult := Mux1H(Seq(
+    sel8  -> vwsllResultSel8.asUInt,
+    sel16 -> vwsllResultSel16.asUInt,
+    sel32 -> vwsllResultSel32,
+  ))
 
   io.out.vd := MuxCase(bitLogicResult, Seq(
     isExt -> extResult,
-    isShift -> Mux(isScalShiftLogic, scalResult, shiftResult),
+    isShift -> Mux(isScalVro,
+                  Mux(isNotVro, scalResult, vroShiftResult),
+                  Mux(widen, vwsllResult, shiftResult)),
+    isZvbbOthers -> Mux(isCountZero, leadZeroResult, revResult),
   ))
-  io.out.narrowVd := Mux(isNClipLogic, nClipResult, narrowResult)
-  io.out.vxsat := nClipSat
+  io.out.narrowVd := Mux(isNClip, nClipResult, narrowResult)
+  io.out.vxsat := Mux(isNClip, nClipSat, 0.U)
 
-  dontTouch(isNClipLogic)
+
+  dontTouch(vs2WidenVec)
+  dontTouch(vs1WidenVec)
+  dontTouch(vwsllVs2Sel8)
+  dontTouch(vwsllVs2Sel16)
+  dontTouch(vwsllVs2Sel32)
+  dontTouch(vwsllResultSel8)
+  dontTouch(vwsllResultSel16)
+  dontTouch(vwsllResultSel32)
+  dontTouch(vwsllResult)
+  dontTouch(vroShift8)
+  dontTouch(vroShift16)
+  dontTouch(vroShift32)
+  dontTouch(vroShift64)
+  dontTouch(vroShiftResult)
+  dontTouch(isNClip)
   dontTouch(nClipResult)
   dontTouch(nClipResultSel8)
   dontTouch(nClipResultSel16)
@@ -362,7 +636,8 @@ class VIAluMisc(xlen: Int = 64) extends Module {
   dontTouch(nClipSatSel16)
   dontTouch(nClipSatSel32)
   dontTouch(nClipSat)
-  dontTouch(isScalShiftLogic)
+  dontTouch(isNotVro)
+  dontTouch(isScalVro)
   dontTouch(shiftData64)
   dontTouch(shiftData32)
   dontTouch(shiftData16)

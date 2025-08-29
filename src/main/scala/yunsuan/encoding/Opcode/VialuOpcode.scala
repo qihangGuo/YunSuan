@@ -47,7 +47,15 @@ class VIAluOpcode extends Bundle {
 
   def isMax: Bool = isMaxMinLogic & op(0)
 
-  def isScalShiftLogic: Bool = isShiftLogic & (op(2) ^ op(1)) & op(0)
+  def isScalVro: Bool = op(0)
+  def isNotVro: Bool = op(2) ^ op(1)
+  def isZvbbOthers: Bool = isSub
+  def isVcpop:  Bool = !op(1) & !op(0)
+  def isVbrev:  Bool = !op(1) &  op(0)
+  def isVbrev8: Bool =  op(1) & !op(0)
+  def isVrev8:  Bool =  op(1) &  op(0)
+  def isCountZero: Bool = op(2)
+  def isCtz: Bool =  op(0)
 }
 
 object VialuOpcode {
