@@ -11,7 +11,7 @@ object Lzc {
     lzc.io.in := in
     lzc.io.out
   }
-  def apply(in: UInt, isVector: Int): Lzc = {
+  def apply(in: UInt, isVector: Boolean): Lzc = {
     val lzc = Module(new Lzc(in.getWidth, isVector))
     lzc.io.in := in
     lzc
@@ -35,15 +35,15 @@ object LzcPart {
   }
 }
 
-class Lzc(bitWidth: Int, isVector: Int = 0) extends Module {
+class Lzc(bitWidth: Int, isVector: Boolean = false) extends Module {
   val io = IO(new Bundle {
     val in = Input(UInt(bitWidth.W))
     val out = Output(UInt(log2Up(bitWidth).W))
     val isZero = Output(Bool())
-    val out8  = Option.when(isVector != 0)(Output(Vec(8, UInt(4.W))))
-    val out16 = Option.when(isVector != 0)(Output(Vec(4, UInt(5.W))))
-    val out32 = Option.when(isVector != 0)(Output(Vec(2, UInt(6.W))))
-    val out64 = Option.when(isVector != 0)(Output(UInt(7.W)))
+    val out8  = Option.when(isVector)(Output(Vec(8, UInt(4.W))))
+    val out16 = Option.when(isVector)(Output(Vec(4, UInt(5.W))))
+    val out32 = Option.when(isVector)(Output(Vec(2, UInt(6.W))))
+    val out64 = Option.when(isVector)(Output(UInt(7.W)))
   })
   require(bitWidth > 0, "Bit width must be greater than 0.")
   val width = Math.pow(2, log2Up(bitWidth)).toInt
@@ -73,7 +73,7 @@ class Lzc(bitWidth: Int, isVector: Int = 0) extends Module {
     }
   }
 
-  if (isVector != 0) {
+  if (isVector) {
     def mergePart(parts: Seq[LzcPart]): Seq[LzcPart] = {
       val paired = parts.grouped(2).map {
         case Seq(l, h) => LzcPart.merge(l, h)

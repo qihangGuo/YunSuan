@@ -33,3 +33,16 @@ object doShiftRotateRight {
   }
 }
 
+object doShiftLeft {
+  def apply(in: UInt, shamt: UInt): Bits = {
+    doShiftLeft(in, shamt)
+  }
+
+  def doShiftLeft[TI <: Bits, TS <: Bits](in: TI, shift: TS): Bits = {
+    val length = shift.getWidth
+    val amount = pow(2, length-1).intValue
+    val shifted = Mux(shift.head(1).asBool, Cat(in.tail(amount), 0.U(amount.W)), in)
+    if (length == 1) shifted else doShiftLeft(shifted, shift.tail(1))
+  }
+}
+
