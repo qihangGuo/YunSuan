@@ -376,4 +376,6 @@ object Common {
       }
     }
   }
+
+  implicit def validAutoUnwrap[T <: Data](valid: Valid[T]): T = valid.bits
 }
