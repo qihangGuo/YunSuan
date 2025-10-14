@@ -5,6 +5,7 @@ import chisel3._
 import chisel3.experimental.SourceInfo
 import chisel3.util._
 import yunsuan.vector.Common._
+import yunsuan.vector.v2.Crypto.Utils.Zvkned.subBytes
 
 import scala.collection.immutable.SeqMap
 import scala.language.implicitConversions
@@ -35,8 +36,38 @@ class VAes extends Module {
   out.vd := Mux1H(Seq(
     (op.em || op.ef) -> enark,
     op.dm -> demix,
-    op.em -> deark,
+    op.df -> deark,
   ))
+}
+
+class SubBytes extends Module {
+  import VAes._
+
+  val state = IO(Input(UInt(DLEN.W)))
+  val sb = IO(Output(UInt(DLEN.W)))
+
+  sb := subBytes(state)
+}
+
+object SubBytes {
+  def main(args: Array[String]): Unit = {
+    println("Generating the SubBytes hardware")
+
+    val firtoolOpts = Array(
+      "--target=systemverilog",
+      "-O=release",
+      "--disable-annotation-unknown",
+      "--lowering-options=explicitBitcast,disallowLocalVariables,disallowPortDeclSharing,locationInfoStyle=none"
+    )
+    val firtoolAnno = firtoolOpts.map(FirtoolOption.apply).toSeq
+
+    (new chisel3.stage.ChiselStage).execute(
+      Array("--target-dir", "build/vector") ++ args,
+      chisel3.stage.ChiselGeneratorAnnotation(() => new SubBytes()) +: firtoolAnno
+    )
+
+    println("done")
+  }
 }
 
 object VAes {
