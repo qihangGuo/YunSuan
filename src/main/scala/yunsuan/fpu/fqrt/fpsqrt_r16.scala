@@ -720,7 +720,12 @@ class fpsqrt_r16(
   }
   fsm_q := fsm_d
 
-  val wakeupSuccessReg = RegNext(wakeupSuccess, true.B)
+  val wakeupSuccessReg = RegInit(Bool(), true.B)
+  when(flush_i) {
+    wakeupSuccessReg := true.B
+  }.otherwise {
+    wakeupSuccessReg := wakeupSuccess
+  }
   val outValidBlock = Reg(UInt(2.W))
   when(start_handshaked && early_finish || outValidAhead3Cycle) {
     outValidBlock := "b10".U
