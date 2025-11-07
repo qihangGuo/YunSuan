@@ -184,7 +184,12 @@ class FloatDividerR64() extends Module {
   io.start_ready_o := fsm_q(FSM_PRE_0_BIT)
   val start_handshaked = io.start_valid_i & io.start_ready_o
   val wakeupSuccess = io.wakeupSuccess
-  val wakeupSuccessReg = RegNext(io.wakeupSuccess, true.B)
+  val wakeupSuccessReg = RegInit(Bool(), true.B)
+  when(io.flush_i){
+    wakeupSuccessReg := true.B
+  }.otherwise{
+    wakeupSuccessReg := wakeupSuccess
+  }
   val outValidBlock = Reg(UInt(2.W))
   when(start_handshaked && (early_finish || opb_is_power_of_2_f64_0) || io.outValidAhead3Cycle){
     outValidBlock := "b10".U
