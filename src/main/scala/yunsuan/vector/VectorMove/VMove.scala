@@ -2,7 +2,7 @@ package yunsuan.vector.VectorMove
 
 import chisel3._
 import chisel3.util._
-import yunsuan.VmoveType
+import yunsuan.VMoveOpcode
 import yunsuan.vector.{BitsExtend, SewOH}
 import yunsuan.vector.alu.VSew._
 
@@ -12,7 +12,7 @@ class VMoveInfo extends Bundle {
 }
 
 class VectorMoveInputBundle(vlen: Int) extends Bundle {
-  val opcode = UInt(4.W)
+  val opcode = VMoveOpcode()
   val info = new VMoveInfo
   val vs2 = UInt(vlen.W)
   val vs1 = UInt(vlen.W)
@@ -38,11 +38,11 @@ class VectorMove extends Module {
   val vs1 = io.in.bits.vs1
   val mask = io.in.bits.mask
 
-  val isVmvxs  = VmoveType.isVmvxs(opcode)
-  val isVfmvfs = VmoveType.isVfmvfs(opcode)
-  val isVmvsx  = VmoveType.isVmvsx(opcode)
-  val isVfmvsf = VmoveType.isVfmvsf(opcode)
-  val isvmvnr  = VmoveType.isVmvnr(opcode)
+  val isVmvxs  = VMoveOpcode.isVmvxs(opcode)
+  val isVfmvfs = VMoveOpcode.isVfmvfs(opcode)
+  val isVmvsx  = VMoveOpcode.isVmvsx(opcode)
+  val isVfmvsf = VMoveOpcode.isVfmvsf(opcode)
+  val isvmvnr  = VMoveOpcode.isVmvnr(opcode)
   val eewVd = SewOH(vsew)
 
   // Integer Merge/Move, vmv.s.x
