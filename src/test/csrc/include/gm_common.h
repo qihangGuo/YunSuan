@@ -63,6 +63,12 @@ class SGMFloatCvt : public VGMFloatBase {
   virtual ElementOutput calculation_e64(ElementInput input);
 };
 
+// scalar mul
+class SGMIntegerMul : public VGMFloatBase {
+  virtual ElementOutput calculation_e16(ElementInput input);
+  virtual ElementOutput calculation_e32(ElementInput input);
+  virtual ElementOutput calculation_e64(ElementInput input);
+};
 
 class VGMFloatFMA : public VGMFloatBase {
   virtual ElementOutput calculation_e16(ElementInput input);

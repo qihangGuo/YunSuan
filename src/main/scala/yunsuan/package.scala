@@ -653,4 +653,21 @@ package object yunsuan {
     def isQuiet(opcode:UInt) = opcode(2)
     def isFclass(opcode:UInt) = opcode(3)
   }
+
+  object MULOpType {
+    // mul
+    // bit encoding: | type (2bit) | isWord(1bit) | opcode(2bit) |
+    def mul    = "b00000".U
+    def mulh   = "b00001".U
+    def mulhsu = "b00010".U
+    def mulhu  = "b00011".U
+    def mulw   = "b00100".U
+    def mulw7  = "b01100".U
+
+    def isSign(op: UInt) = !op(1)
+    def isW(op: UInt) = op(2)
+    def isH(op: UInt) = op(1, 0) =/= 0.U
+    def getOp(op: UInt) = Cat(op(3), op(1, 0))
+    def isMulw7(op: UInt) = op(3)
+  }
 }

@@ -10,7 +10,7 @@ import yunsuan.vector.mac.VIMac
 import yunsuan.vector._
 import yunsuan.scalar.INT2FP
 import yunsuan.scalar.FPCVT
-
+import yunsuan.scalar.Mul
 
 trait VSPParameter {
   val VLEN       : Int = 128
@@ -24,6 +24,7 @@ trait VSPParameter {
   val VID_latency: Int = 99
   val VCVT_latency: Int = 2 // ??
   val VIMAC_latency: Int = 2
+  val IMUL_latency: Int = 2
 }
 
 object VPUTestFuType { // only use in test, difftest with xs
@@ -38,9 +39,10 @@ object VPUTestFuType { // only use in test, difftest with xs
   def fcvtf2x= "b0000_1000".U(8.W)
   def fcvti2f= "b0000_1001".U(8.W)
   def vimac = "b0000_1010".U(8.W) // not used
+  def imul = "b0000_1011".U(8.W)
 
   def unknown(typ: UInt) = {
-    (typ > 10.U)
+    (typ > 11.U)
   }
 }
 
@@ -116,7 +118,8 @@ class SimTop() extends VPUTestModule {
       VPUTestFuType.vcvt -> VCVT_latency.U,
       VPUTestFuType.fcvtf2x -> VCVT_latency.U,
       VPUTestFuType.fcvti2f -> VCVT_latency.U,
-      VPUTestFuType.vimac -> VIMAC_latency.U
+      VPUTestFuType.vimac -> VIMAC_latency.U,
+      VPUTestFuType.imul -> IMUL_latency.U
     )) // fuType --> latency, spec case for div
     assert(!VPUTestFuType.unknown(io.in.bits.fuType))
   }
@@ -150,6 +153,7 @@ class SimTop() extends VPUTestModule {
   val i2f_result = Wire(new VSTOutputIO)
   val fpcvt_result = Wire(new VSTOutputIO)
   val vimac_result = Wire(new VSTOutputIO)
+  val imul_result = Wire(new VSTOutputIO)
   when (io.in.fire || io.out.fire) {
     vfd_result_valid.map(_ := false.B)
   }
@@ -165,6 +169,7 @@ class SimTop() extends VPUTestModule {
     val vcvt = Module(new VectorCvt(XLEN))
     val i2fcvt = Module(new INT2FP(2, XLEN))
     val fpcvt = Module(new FPCVT(XLEN))
+    val imul = Module(new Mul(XLEN))
 
     require(vfa.io.fp_a.getWidth == XLEN)
     vfa.io.fire := busy
@@ -310,6 +315,15 @@ class SimTop() extends VPUTestModule {
     fpcvt_result.vxsat := 0.U
     fpcvt_result.result(i) := fpcvt.io.result
     fpcvt_result.fflags(i) := fpcvt.io.fflags
+
+    // mul
+    imul.io.in.valid := busy
+    imul.io.in.bits.fuOpType := opcode
+    imul.io.in.bits.src(0) := src1
+    imul.io.in.bits.src(1) := src2
+    imul_result.result(i) := imul.io.out
+    imul_result.fflags(i) := 0.U
+    imul_result.vxsat := 0.U
   }
 
   val vperm = Module(new VPermTop)
@@ -423,7 +437,8 @@ class SimTop() extends VPUTestModule {
     VPUTestFuType.vcvt -> vcvt_result,
     VPUTestFuType.fcvtf2x -> fpcvt_result,
     VPUTestFuType.fcvti2f -> i2f_result,
-    VPUTestFuType.vimac -> vimac_result
+    VPUTestFuType.vimac -> vimac_result,
+    VPUTestFuType.imul -> imul_result
   ))
 }
 

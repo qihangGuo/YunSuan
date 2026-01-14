@@ -45,6 +45,7 @@ private:
   VGMIntegerMAC vimac;
   VGMFloatCvt vcvt;
   SGMFloatCvt scvt;
+  SGMIntegerMul smul;
 
 public:
   TestDriver();

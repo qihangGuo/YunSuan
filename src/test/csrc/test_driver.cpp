@@ -11,7 +11,7 @@ extern "C" {
 #include "include/test_driver.h"
 
 TestDriver::TestDriver():
-  issued(false), verbose(true), keepinput(false)
+  issued(false), verbose(false), keepinput(false)
 {
   // aviod random value
   set_test_type();
@@ -27,7 +27,7 @@ void TestDriver::set_default_value(VSimTop *dut_ptr) {
 }
 // fix set_test_type to select fuType
 void TestDriver::set_test_type() {
-  test_type.pick_fuType = true;
+  test_type.pick_fuType = false;
   test_type.pick_fuOpType = false;
   test_type.fuType = VIntegerMAC;
   test_type.fuOpType = VSMUL;
@@ -124,6 +124,11 @@ uint8_t TestDriver::gen_random_optype() {
         uint8_t i2fcvt_64_optype[I2FCVT_64_NUM] = I2FCVT_64_OPTYPES;
         return i2fcvt_64_optype[rand() % I2FCVT_64_NUM];
         break;
+    }
+    case IntegerMul: {
+      uint8_t imul_optype[IMUL_NUM] = IMUL_OPTYPES;
+      return imul_optype[rand() % IMUL_NUM];
+      break;
     }
     default:
       printf("Unsupported FuType %d\n", input.fuType);
@@ -433,6 +438,17 @@ void TestDriver::get_random_input() {
     input.vinfo.ma = false;
     input.rm_s     = rand()%4;
     input.uop_idx = 0;
+  }else if (input.fuType == IntegerMul) {
+    if (!test_type.pick_fuOpType) { input.fuOpType = gen_random_optype(); }
+    else { input.fuOpType = test_type.fuOpType; }
+    if (input.fuOpType == IMUL_MULW7) {
+      input.src1[0] &= 0x7f;
+      input.src1[1] &= 0x7f;
+    }
+    input.sew = 3;
+    input.is_frs1 = false;
+    input.is_frs2 = false;
+    input.widen = false;
   }else{
     if (!test_type.pick_fuOpType) { input.fuOpType = gen_random_optype(); }
     else { input.fuOpType = test_type.fuOpType; }
@@ -456,6 +472,8 @@ void TestDriver::get_random_input() {
            (input.fuType == VFloatCvt && input.fuOpType == VFNCVT_RTZ_XFW)
   ){
     input.rm = 1;
+  } else if (input.fuType == IntegerMul) {
+    input.rm = 0;
   }else{
     input.rm = rand() % 5;
   }
@@ -505,6 +523,9 @@ void TestDriver::get_expected_output() {
     case FloatCvtI2F:
       if (verbose) { printf("FuType:%d, choose FloatCvtI2F %d\n", input.fuType, FloatCvtI2F); }
       expect_output = scvt.get_expected_output(input); return; 
+    case IntegerMul:
+      if (verbose) { printf("FuType:%d, choose IntegerMul %d\n", input.fuType, IntegerMul); }
+      expect_output = smul.get_expected_output(input); return;
     default:
       printf("Unsupported FuType %d\n", input.fuType);
       exit(1);
