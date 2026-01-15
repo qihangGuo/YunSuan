@@ -867,11 +867,9 @@ object Opcodes {
     protected def getSubOp(implicit op: UInt): UInt = op(4, 2)
     protected def getSubOp(op: BitPat): BitPat = op(4, 2)
 
-    def isVmvxs(implicit op: UInt): Bool = getSubOp.isOneOf(MV_VS2X)
-    def isVfmvfs(implicit op: UInt): Bool = getSubOp.isOneOf(MV_VS2X)
-    def isVmvsx(implicit op: UInt): Bool = getSubOp.isOneOf(MV_X2VS)
-    def isVfmvsf(implicit op: UInt): Bool = getSubOp.isOneOf(MV_X2VS)
-    def isVmvnr(implicit op: UInt): Bool = getSubOp.isOneOf(MV_NR)
+    def isVS2X(implicit op: UInt): Bool = getSubOp.isOneOf(MV_VS2X)
+    def isX2VS(implicit op: UInt): Bool = getSubOp.isOneOf(MV_X2VS)
+    def isNR(implicit op: UInt): Bool = getSubOp.isOneOf(MV_NR)
     def isVmerge(implicit op: UInt): Bool = getSubOp.isOneOf(MERGE_VV, MERGE_VX)
 
     def needMask(implicit op: UInt) = getSubOp.isOneOf(MERGE_VV, MERGE_VX)
