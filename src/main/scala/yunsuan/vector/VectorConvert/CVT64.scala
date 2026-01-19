@@ -244,7 +244,7 @@ class FP_INCVT(width: Int) extends Module {
   expNext := expAdderIn0Next + expAdderIn1Next
   val expReg = RegEnable(expNext, fire)
 
-  val leadZerosNext = Lzc((fracSrc<<(64 - f64.fracWidth)).asUInt)
+  val leadZerosNext = Lzc((fracSrc<<(64 - f64.fracWidth)).asUInt).data
   expAdderIn0Next := Mux1H(Seq(
     isFpWidenNext -> Mux1H(float1HOutNext.head(2), fpParam.biasDeltaMap.take(2).map(delta => delta.U)),
     isFpCrossHighNext -> fpParam.biasDeltaMap(2).U,
@@ -676,7 +676,7 @@ class INT2FP(width: Int) extends Module{
   val isZeroIntSrc = RegEnable(isZeroIntSrcNext, false.B, fire)
   //CLZ
   val clzIn = absIntSrcNext.asUInt
-  val leadZerosNext = Lzc(clzIn)
+  val leadZerosNext = Lzc(clzIn).data
   //exp
   val expAdderIn0Next = Wire(UInt(widthExpAdder.W)) //13bits is enough
   val expAdderIn1Next = Wire(UInt(widthExpAdder.W))
@@ -840,7 +840,7 @@ class Estimate7(width: Int) extends Module{
   val result = RegEnable(resultNext, 0.U(64.W), fireReg)
 
   val clzIn = (fracSrc<<(64 - f64.fracWidth)).asUInt
-  val leadZerosNext = Lzc(clzIn)
+  val leadZerosNext = Lzc(clzIn).data
   val rmin =
     rm === RTZ || (signSrc && rm === RUP) || (!signSrc && rm === RDN) //cycle1
   //exp
