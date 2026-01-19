@@ -6,7 +6,7 @@ import chisel3.util._
 case class LzcPart(z: Vec[Bool], v: Bool)
 
 object Lzc {
-  def apply(in: UInt): UInt = {
+  def apply(in: UInt): LzcOutBundle = {
     val lzc = Module(new Lzc(in.getWidth))
     lzc.io.in := in
     lzc.io.out
@@ -30,15 +30,19 @@ object LzcPart {
   }
 }
 
+class LzcOutBundle(bitWidth: Int) extends Bundle {
+  val data = UInt(log2Up(bitWidth).W)
+  val isZero = Bool()
+}
+
 class Lzc(bitWidth: Int) extends Module {
   val io = IO(new Bundle {
     val in = Input(UInt(bitWidth.W))
-    val out = Output(UInt(log2Up(bitWidth).W))
-    val isZero = Output(Bool())
+    val out = Output(new LzcOutBundle(bitWidth))
   })
   require(bitWidth > 0, "Bit width must be greater than 0.")
   val width = Math.pow(2, log2Up(bitWidth)).toInt
-  val in = (io.in.asBools.reverse ++ Seq.fill(width - bitWidth)(true.B)).reverse
+  val in = (io.in.asBools.reverse ++ Seq.fill(width - bitWidth)(false.B)).reverse
   val groups: Seq[Seq[Bool]] = in.grouped(8).toSeq
 
   val localPart: Seq[LzcPart] = groups.map {group =>
@@ -68,6 +72,6 @@ class Lzc(bitWidth: Int) extends Module {
   val finalZ = VecInit(finalPart.z.map(!_))
   val z_out = finalZ.asUInt
   val v_out = !finalPart.v
-  io.out := z_out
-  io.isZero := v_out
+  io.out.data := z_out
+  io.out.isZero := v_out
 }
