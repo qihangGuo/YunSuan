@@ -109,6 +109,9 @@ class VIntFixpAlu64b extends Module {
 }
 
 class VIntFixpAlu extends Module {
+  val VLEN = VIFuParam.VLEN
+  val VLENB = VIFuParam.VLENB
+  val lanes = VLEN / 64
   val io = IO(new Bundle {
     val fire = Input(Bool())
     val in = Input(new Bundle {
@@ -116,10 +119,10 @@ class VIntFixpAlu extends Module {
       val info = new VIFuInfo
       val srcType = Vec(2, UInt(4.W))
       val vdType  = UInt(4.W)
-      val vs1 = UInt(128.W)
-      val vs2 = UInt(128.W)
-      val old_vd = UInt(128.W)
-      val mask16b = UInt(16.W)
+      val vs1 = UInt(VLEN.W)
+      val vs2 = UInt(VLEN.W)
+      val old_vd = UInt(VLEN.W)
+      val mask16b = UInt(VLENB.W)
     })
     val ctrl = Input(new Bundle {
       val narrow = Input(Bool())
@@ -152,9 +155,16 @@ class VIntFixpAlu extends Module {
 
   val isFixp = Mux(vIntFixpDecode.misc, opcode.isScalingShift, opcode.isSatAdd || opcode.isAvgAdd)
 
-  //------- Two 64b modules form one 128b unit ------
-  val vIntFixpAlu64bs = Seq.fill(2)(Module(new VIntFixpAlu64b))
-  for (i <- 0 until 2) {
+  //------- 64b modules form one VLEN unit ------
+  val vs1_32 = UIntSplit(vs1, 32)
+  val vs1_64 = UIntSplit(vs1, 64)
+  val vs2_8 = UIntSplit(vs2, 8)
+  val vs2_16 = UIntSplit(vs2, 16)
+  val vs2_32 = UIntSplit(vs2, 32)
+  val vs2_64 = UIntSplit(vs2, 64)
+
+  val vIntFixpAlu64bs = Seq.fill(lanes)(Module(new VIntFixpAlu64b))
+  for (i <- 0 until lanes) {
     vIntFixpAlu64bs(i).io.fire := fire
     vIntFixpAlu64bs(i).io.opcode := opcode
     vIntFixpAlu64bs(i).io.info := io.in.info
@@ -175,41 +185,63 @@ class VIntFixpAlu extends Module {
   val vf8 = vd_sub_srcType === 3.U && opcode.isVext
   // Rearrange vs2
   when (widen_vs2) {
-    vIntFixpAlu64bs(0).io.vs2_adder := Cat(vs2(95, 64), vs2(31, 0))
-    vIntFixpAlu64bs(1).io.vs2_adder := Cat(vs2(127, 96), vs2(63, 32))
+    for (i <- 0 until lanes) {
+      vIntFixpAlu64bs(i).io.vs2_adder := Cat(vs2_32(i + lanes), vs2_32(i))
+    }
   }.otherwise {
-    vIntFixpAlu64bs(0).io.vs2_adder := vs2(63, 0)
-    vIntFixpAlu64bs(1).io.vs2_adder := vs2(127, 64)
+    for (i <- 0 until lanes) {
+      vIntFixpAlu64bs(i).io.vs2_adder := vs2_64(i)
+    }
   }
   when (vf2) {
-    vIntFixpAlu64bs(0).io.vs2_misc := Cat(vs2(95, 64), vs2(31, 0))
-    vIntFixpAlu64bs(1).io.vs2_misc := Cat(vs2(127, 96), vs2(63, 32))
+    for (i <- 0 until lanes) {
+      vIntFixpAlu64bs(i).io.vs2_misc := Cat(vs2_32(i + lanes), vs2_32(i))
+    }
   }.elsewhen (vf4) {
-    vIntFixpAlu64bs(0).io.vs2_misc := Cat(vs2(111, 96), vs2(79, 64), vs2(47, 32), vs2(15, 0))
-    vIntFixpAlu64bs(1).io.vs2_misc := Cat(vs2(127, 112), vs2(95, 80), vs2(63, 48), vs2(31, 16))
+    for (i <- 0 until lanes) {
+      vIntFixpAlu64bs(i).io.vs2_misc := Cat(Seq.tabulate(4)(k => vs2_16(i + k * lanes)).reverse)
+    }
   }.elsewhen (vf8) {
-    vIntFixpAlu64bs(0).io.vs2_misc := Cat(Seq.tabulate(8)(i => vs2(16*i+7, 16*i)).reverse)
-    vIntFixpAlu64bs(1).io.vs2_misc := Cat(Seq.tabulate(8)(i => vs2(16*i+15, 16*i+8)).reverse)
+    for (i <- 0 until lanes) {
+      vIntFixpAlu64bs(i).io.vs2_misc := Cat(Seq.tabulate(8)(k => vs2_8(i + k * lanes)).reverse)
+    }
   }.otherwise {
-    vIntFixpAlu64bs(0).io.vs2_misc := vs2(63, 0)
-    vIntFixpAlu64bs(1).io.vs2_misc := vs2(127, 64)
+    for (i <- 0 until lanes) {
+      vIntFixpAlu64bs(i).io.vs2_misc := vs2_64(i)
+    }
   }
   // Rearrange vs1 (need concern the case of narrow)
   when (widen || narrow) {
-    vIntFixpAlu64bs(0).io.vs1 := Cat(vs1(95, 64), vs1(31, 0))
-    vIntFixpAlu64bs(1).io.vs1 := Cat(vs1(127, 96), vs1(63, 32))
+    for (i <- 0 until lanes) {
+      vIntFixpAlu64bs(i).io.vs1 := Cat(vs1_32(i + lanes), vs1_32(i))
+    }
   }.otherwise {
-    vIntFixpAlu64bs(0).io.vs1 := vs1(63, 0)
-    vIntFixpAlu64bs(1).io.vs1 := vs1(127, 64)
+    for (i <- 0 until lanes) {
+      vIntFixpAlu64bs(i).io.vs1 := vs1_64(i)
+    }
   }
 
   //---- Input mask extraction ----
   val eewVd_is_1b = vdType === 15.U
-  for (i <- 0 until 2) {
-    vIntFixpAlu64bs(i).io.vmask := 
-      mask16_to_2x8(io.in.mask16b, Mux(eewVd_is_1b, eewVs1, eewVd))(i)
-    vIntFixpAlu64bs(i).io.oldVd := // only for compare instrution
-      mask16_to_2x8(MaskExtract(io.in.old_vd, io.in.info.uopIdx, eewVs1), eewVs1)(i)
+  def maskPerLane(maskIn: UInt, sew: SewOH, lane: Int): UInt = {
+    val mask8 = Wire(UInt(8.W))
+    val base8 = lane * 8
+    val base16 = lane * 4
+    val base32 = lane * 2
+    val base64 = lane
+    mask8 := Mux1H(sew.oneHot, Seq(
+      maskIn(base8 + 7, base8),
+      Cat(0.U(4.W), maskIn(base16 + 3, base16)),
+      Cat(0.U(6.W), maskIn(base32 + 1, base32)),
+      Cat(0.U(7.W), maskIn(base64))
+    ))
+    mask8
+  }
+  val vmaskSew = Mux(eewVd_is_1b, eewVs1, eewVd)
+  val oldVdMask = MaskExtract(io.in.old_vd, io.in.info.uopIdx, eewVs1)
+  for (i <- 0 until lanes) {
+    vIntFixpAlu64bs(i).io.vmask := maskPerLane(io.in.mask16b, vmaskSew, i)
+    vIntFixpAlu64bs(i).io.oldVd := maskPerLane(oldVdMask, eewVs1, i) // only for compare instrution
   }
 
   /**
@@ -217,7 +249,7 @@ class VIntFixpAlu extends Module {
    */
   val uopIdxS1 = RegEnable(uopIdx, fire)
   val opcodeS1 = RegEnable(opcode, fire)
-  val old_vd_S1 = Wire(UInt(128.W))
+  val old_vd_S1 = Wire(UInt(VLEN.W))
   old_vd_S1 := RegEnable(io.in.old_vd, fire)
   val eewVs1S1 = RegEnable(eewVs1, fire)
   val eewVdS1 = RegEnable(eewVd, fire)
@@ -230,21 +262,22 @@ class VIntFixpAlu extends Module {
   val vl_S1 = RegEnable(vl, fire)
   val vstartS1 = RegEnable(vstart, fire)
   //---- Narrowing vd rearrangement ----
-  val catNarrowVd = Cat(vIntFixpAlu64bs(1).io.narrowVd, vIntFixpAlu64bs(0).io.narrowVd)
-  val vdOfNarrow = Mux(uopIdxS1(0), Cat(catNarrowVd, old_vd_S1(63, 0)),
-                       Cat(old_vd_S1(127, 64), catNarrowVd))
+  val catNarrowVd = Cat(vIntFixpAlu64bs.map(_.io.narrowVd).reverse)
+  val narrowWidth = VLEN / 2
+  val vdOfNarrow = Mux(uopIdxS1(0), Cat(catNarrowVd, old_vd_S1(narrowWidth - 1, 0)),
+                       Cat(old_vd_S1(VLEN - 1, narrowWidth), catNarrowVd))
   //---- Compare/carry-out vd rearrangement ----
   val cmpOuts = vIntFixpAlu64bs.map(_.io.cmpOut)
-  val cmpOut128b = Mux1H(eewVs1S1.oneHot, Seq(8,4,2,1).map(
-                    k => Cat(0.U((128-2*k).W), cmpOuts(1)(k-1,0), cmpOuts(0)(k-1,0))))
-  val cmpOutOff128b = Mux1H(eewVs1S1.oneHot, Seq(8,4,2,1).map(
-                    k => Cat(0.U((128-2*k).W), ~0.U((2*k).W))))
+  val cmpOutVlenb = Mux1H(eewVs1S1.oneHot, Seq(8,4,2,1).map(
+                    k => Cat(0.U((VLEN - lanes * k).W), Cat(Seq.tabulate(lanes)(lane => cmpOuts(lane)(k-1,0)).reverse))))
+  val cmpOutOffVlenb = Mux1H(eewVs1S1.oneHot, Seq(8,4,2,1).map(
+                    k => Cat(0.U((VLEN - lanes * k).W), ~0.U((lanes * k).W))))
   val shiftCmpOut = Wire(UInt(7.W))
   shiftCmpOut := Mux1H(eewVs1S1.oneHot, Seq(4,3,2,1).map(i => uopIdxS1(2, 0) << i))
-  val cmpOutKeep = Wire(UInt(128.W))
-  cmpOutKeep := cmpOut128b << shiftCmpOut
-  val cmpOutOff = Wire(UInt(128.W))
-  cmpOutOff := ~(cmpOutOff128b << shiftCmpOut)
+  val cmpOutKeep = Wire(UInt(VLEN.W))
+  cmpOutKeep := cmpOutVlenb << shiftCmpOut
+  val cmpOutOff = Wire(UInt(VLEN.W))
+  cmpOutOff := ~(cmpOutOffVlenb << shiftCmpOut)
   val cmpOutResult = old_vd_S1 & cmpOutOff | cmpOutKeep // Compare and carry-out
 
   /**
@@ -264,8 +297,8 @@ class VIntFixpAlu extends Module {
   val tailReorg = MaskReorg.splash(tailS1, eewVdS1)
   val prestartReorg = MaskReorg.splash(prestartS1, eewVdS1)
   val mask16bReorg = MaskReorg.splash(mask16bS1, eewVdS1)
-  val updateType = Wire(Vec(16, UInt(2.W))) // 00: keep result  10: old_vd  11: write 1s
-  for (i <- 0 until 16) {
+  val updateType = Wire(Vec(VLENB, UInt(2.W))) // 00: keep result  10: old_vd  11: write 1s
+  for (i <- 0 until VLENB) {
     when (prestartReorg(i) || vstart_gte_vl_S1) {
       updateType(i) := 2.U
     }.elsewhen (tailReorg(i)) {
@@ -278,7 +311,7 @@ class VIntFixpAlu extends Module {
       updateType(i) := 0.U
     }
   }
-  // finalResult = result & bitsKeep | bitsReplace   (all are 128 bits)
+  // finalResult = result & bitsKeep | bitsReplace
   val bitsKeep = Cat(updateType.map(x => Mux(x(1), 0.U(8.W), ~0.U(8.W))).reverse)
   val bitsReplace = Cat(updateType.zipWithIndex.map({case (x, i) => 
         Mux(!x(1), 0.U(8.W), Mux(x(0), ~0.U(8.W), UIntSplit(old_vd_S1, 8)(i)))}).reverse)
@@ -286,11 +319,16 @@ class VIntFixpAlu extends Module {
   /**
    * Output tail/prestart/mask handling for eewVd == 1
    */
-  val tail_1b_temp = UIntToCont0s(vl_S1(wVL-2, 0), wVL-1)
-  require(tail_1b_temp.getWidth == 128)
-  val tail_1b = Mux(vl_S1 === 128.U, 0.U(128.W), tail_1b_temp)
-  val prestart_1b = UIntToCont1s(vstartS1, wVSTART)
-  require(prestart_1b.getWidth == 128)
+  val vlenBits = log2Ceil(VLEN)
+  val tail_1b_temp = UIntToCont0s(vl_S1(vlenBits - 1, 0), vlenBits)
+  require(tail_1b_temp.getWidth == VLEN)
+  val tail_1b = Mux(vl_S1 === VLEN.U, 0.U(VLEN.W), tail_1b_temp)
+  val vstart_ext =
+    if (vstartS1.getWidth > vlenBits) vstartS1(vlenBits - 1, 0)
+    else if (vstartS1.getWidth < vlenBits) Cat(0.U((vlenBits - vstartS1.getWidth).W), vstartS1)
+    else vstartS1
+  val prestart_1b = UIntToCont1s(vstart_ext, vlenBits)
+  require(prestart_1b.getWidth == VLEN)
   val bitsKeep_1b = ~(prestart_1b | tail_1b)
   val bitsReplace_1b = Mux(vstart_gte_vl_S1, old_vd_S1, 
                        prestart_1b & old_vd_S1 | tail_1b)
@@ -305,22 +343,14 @@ class VIntFixpAlu extends Module {
     io.out.vxsat := (Cat(vIntFixpAlu64bs.map(_.io.vxsat).reverse) &
                      Cat(updateType.map(_(1) === false.B).reverse)).orR
   }.otherwise {
-    io.out.vxsat := (Cat(vIntFixpAlu64bs.map(_.io.vxsat(VLENB/4 - 1, 0)).reverse) &
-                     Mux(uopIdxS1(0), Cat(updateType.drop(VLENB/2).map(_(1) === false.B).reverse),
-                                      Cat(updateType.take(VLENB/2).map(_(1) === false.B).reverse))
-                     ).orR
+    val vxsatNarrow = Cat(vIntFixpAlu64bs.map(_.io.vxsat(VLENB/4 - 1, 0)).reverse)
+    val updateMaskNarrow =
+      if (vxsatNarrow.getWidth == VLENB)
+        Cat(updateType.map(_(1) === false.B).reverse)
+      else
+        Mux(uopIdxS1(0), Cat(updateType.drop(VLENB/2).map(_(1) === false.B).reverse),
+                          Cat(updateType.take(VLENB/2).map(_(1) === false.B).reverse))
+    io.out.vxsat := (vxsatNarrow & updateMaskNarrow).orR
   }
 
-
-  //---- Some methods ----
-  def mask16_to_2x8(maskIn: UInt, sew: SewOH): Seq[UInt] = {
-    require(maskIn.getWidth == 16)
-    val result16 = Mux1H(Seq(
-      sew.is8  -> maskIn,
-      sew.is16 -> Cat(0.U(4.W), maskIn(7, 4), 0.U(4.W), maskIn(3, 0)),
-      sew.is32 -> Cat(0.U(6.W), maskIn(3, 2), 0.U(6.W), maskIn(1, 0)),
-      sew.is64 -> Cat(0.U(7.W), maskIn(1), 0.U(7.W), maskIn(0)),
-    ))
-    Seq(result16(7, 0), result16(15, 8))
-  }
 }

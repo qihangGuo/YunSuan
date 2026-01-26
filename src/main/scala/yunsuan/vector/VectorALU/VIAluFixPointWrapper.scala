@@ -38,7 +38,7 @@ class VIAluFixPointWrapperIO(vlen: Int) extends Bundle {
   val out = DecoupledIO(Output(new VIAluFixPointWrapperOut(vlen)))
 }
 class VIAluFixPointWrapper extends Module {
-  val VLEN = 128
+  val VLEN = VIFuParam.VLEN
   val io = IO(new VIAluFixPointWrapperIO(VLEN))
 
   val valid = io.in.valid
@@ -69,8 +69,8 @@ class VIAluFixPointTop(vlen: Int) extends Module {
 
   val dataWidth = vlen
   val dataWidthOfDataModule = 64
-  val VLEN = 128
-  val XLEN = 64
+  val VLEN = vlen
+  val XLEN = VIFuParam.XLEN
   val numVecModule = dataWidth / dataWidthOfDataModule
 
   private val vs2Split = Module(new VecDataSplitModule(dataWidth, dataWidthOfDataModule))
@@ -146,10 +146,10 @@ class VIAluFixPointTop(vlen: Int) extends Module {
   val maskDataVec = VecDataToMaskDataVec(srcMask, vsew)
   val maskVecGen = Wire(UInt((VLEN / 8).W))
   maskVecGen := SplitMask(maskDataVec(vuopIdx), vsew).asUInt
-  val maskVec = Wire(Vec(2, UInt(8.W)))
+  val maskVec = Wire(Vec(numVecModule, UInt(8.W)))
   maskVec := maskVecGen.asTypeOf(maskVec)
 
-  for (i <- 0 until 2) {
+  for (i <- 0 until numVecModule) {
     vs2Vec(i) := vs2Split.io.outVec64b(i)
     vs1Vec(i) := vs1Split.io.outVec64b(i)
     vs2WidenVec(i) := Mux(vuopIdx(0), vs2Split.io.outVec32b(i + 2), vs2Split.io.outVec32b(i))

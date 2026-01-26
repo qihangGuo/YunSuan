@@ -10,7 +10,7 @@ import math.pow
 class ByteMaskTailGenIO(vlen: Int) extends Bundle {
   private val numBytes = vlen / 8
   private val maxVLMUL = 8
-  private val maxVLMAX = 8 * 16 // TODO: parameterize this
+  private val maxVLMAX = vlen // max bytes coverage matches vector length
   private val elemIdxWidth = log2Up(maxVLMAX + 1)
   println(s"elemIdxWidth: $elemIdxWidth")
 
@@ -35,7 +35,7 @@ class ByteMaskTailGen(vlen: Int) extends Module {
   private val numBytes = vlen / 8
   private val byteWidth = log2Up(numBytes) // vlen=128, numBytes=16, byteWidth=log2(16)=4
   private val maxVLMUL = 8
-  private val maxVLMAX = 8 * 16 // TODO: parameterize this
+  private val maxVLMAX = vlen // max bytes coverage matches vector length
   private val elemIdxWidth = log2Up(maxVLMAX + 1)
 
   println(s"numBytes: ${numBytes}, byteWidth: ${byteWidth}")

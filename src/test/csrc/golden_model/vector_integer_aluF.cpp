@@ -2,11 +2,11 @@
 #include "../include/vfpu_functions.h"
 #include <assert.h>
 
-#define GET_BIT(x, bit) ((x & (1 << bit)) >> bit)
+#define GET_BIT(x, bit) ((x & (1ULL << bit)) >> bit)
 
-ElementInput VGMIntegerALUF::select_vialuf_element(VecInput input, int idx, uint16_t mask, bool widenVd, bool widenVs2, bool isDstMask) {
+ElementInput VGMIntegerALUF::select_vialuf_element(VecInput input, int idx, uint64_t mask, bool widenVd, bool widenVs2, bool isDstMask) {
   int sew = input.sew;
-  int number = (128 / 8) >> sew;
+  int number = (VLEN / 8) >> sew;
 
   bool isVf2 = ((input.fuOpType == VZEXT_VF2) || (input.fuOpType == VSEXT_VF2));
   bool isVf4 = ((input.fuOpType == VZEXT_VF4) || (input.fuOpType == VSEXT_VF4));
@@ -153,13 +153,15 @@ uint16_t n_copy_x_to_16(uint16_t n, int x) {
 
 VecOutput VGMIntegerALUF::get_expected_output(VecInput input) {
   VecOutput output;
-  
+  constexpr int kVlenWords = VLEN / 64;
+  constexpr int kVlenBytes = VLEN / 8;
+
   uint64_t allMaskFalse = 0;
   uint64_t allMaskTrue = ~allMaskFalse;
 
-  uint64_t oldVd[2];
-  uint64_t maskIn[2];
-  for (int i = 0; i < 2; i++) {
+  uint64_t oldVd[kVlenWords];
+  uint64_t maskIn[kVlenWords];
+  for (int i = 0; i < kVlenWords; i++) {
     oldVd[i] = input.src3[i];
     maskIn[i] = input.src4[i];
   }
@@ -169,11 +171,9 @@ VecOutput VGMIntegerALUF::get_expected_output(VecInput input) {
   bool ta = input.vinfo.ta;
   int sew = input.sew;
   int vl = input.vinfo.vl;
-  int uopIdx = input.uop_idx;
 
   bool isAddCarry = ((fuOpType == VADC_VVM) || (fuOpType == VMADC_VVM) || (fuOpType == VMADC_VV) ||
                      (fuOpType == VSBC_VVM) || (fuOpType == VMSBC_VVM) || (fuOpType == VMSBC_VV));
-  bool isMisc = (fuOpType & 0x20) >> 5;
   bool isSat = (fuOpType == VSADDU_VV) || (fuOpType == VSADD_VV) || (fuOpType == VSSUBU_VV) || (fuOpType == VSSUB_VV);
   bool isNclip = (fuOpType == VNCLIP_WV) || (fuOpType == VNCLIPU_WV);
   bool isNarrow = ((fuOpType == VNSRA_WV) || (fuOpType == VNSRL_WV) || (fuOpType == VNCLIP_WV) || (fuOpType == VNCLIPU_WV));
@@ -185,18 +185,14 @@ VecOutput VGMIntegerALUF::get_expected_output(VecInput input) {
   bool isOpMask = ((fuOpType == VMAND_MM) || (fuOpType == VMNAND_MM) || (fuOpType == VMANDN_MM) || (fuOpType == VMXOR_MM) ||
                    (fuOpType == VMOR_MM) || (fuOpType == VMNOR_MM) || (fuOpType == VMORN_MM) || (fuOpType == VMXNOR_MM));
 
-  
   bool widenVs2 = (fuOpType == VWADDU_WV) || (fuOpType == VWSUBU_WV) || (fuOpType == VWADD_WV) || (fuOpType == VWSUB_WV) || isNarrow;
-  bool widenVd = (fuOpType == VWADDU_VV)  || (fuOpType == VWADD_VV)  ||(fuOpType == VWADDU_WV) || (fuOpType == VWADD_WV) || 
+  bool widenVd = (fuOpType == VWADDU_VV)  || (fuOpType == VWADD_VV)  ||(fuOpType == VWADDU_WV) || (fuOpType == VWADD_WV) ||
                   (fuOpType == VWSUBU_VV) || (fuOpType == VWSUB_VV)  || (fuOpType == VWSUBU_WV) || (fuOpType == VWSUB_WV) || (fuOpType == VWSLL_VV);
 
-  int maxUopIdx = 128 / 8;
-  int numBytes = maxUopIdx;
-
   bool needClearMask = (fuOpType == VMADC_VV) || (fuOpType == VMSBC_VV);
-  uint64_t srcMask[2];
-
-  for (int i = 0; i < 2; i++) {
+  uint64_t srcMask[kVlenWords];
+  uint64_t activeMask[kVlenWords];
+  for (int i = 0; i < kVlenWords; i++) {
     if (needClearMask) {
       srcMask[i] = allMaskFalse;
     } else if (vm) {
@@ -204,68 +200,38 @@ VecOutput VGMIntegerALUF::get_expected_output(VecInput input) {
     } else {
       srcMask[i] = maskIn[i];
     }
+    activeMask[i] = isAddCarry ? allMaskTrue : srcMask[i];
   }
 
-  uint16_t maskDataVec[8];
-  for (int i = 0; i < 8; i++) {
-    switch (sew) {
-      case 0:
-        if (i < 4) {
-          maskDataVec[i] = vec_data_to_mask_data(srcMask[0], 0, i);
-        } else {
-          maskDataVec[i] = vec_data_to_mask_data(srcMask[1], 0, i-4);
-        }
-        break;
-      case 1:
-        maskDataVec[i] = vec_data_to_mask_data(srcMask[0], 1, i);
-        break;
-      case 2:
-        maskDataVec[i] = vec_data_to_mask_data(srcMask[0], 2, i);
-        break;
-      case 3:
-        maskDataVec[i] = vec_data_to_mask_data(srcMask[0], 3, i);
-        break;
-      default:
-        printf("bad sew\n");
-        break;
+  uint8_t elementMaskSrc[kVlenBytes];
+  uint8_t elementMaskActive[kVlenBytes];
+  uint8_t oldMaskBits[kVlenBytes];
+  for (int i = 0; i < kVlenBytes; i++) {
+    int word = i / 64;
+    int bit = i % 64;
+    elementMaskSrc[i] = (srcMask[word] >> bit) & 0x1ULL;
+    elementMaskActive[i] = (activeMask[word] >> bit) & 0x1ULL;
+    oldMaskBits[i] = (oldVd[word] >> bit) & 0x1ULL;
+  }
+
+  uint64_t maskToElement = 0;
+  for (int i = 0; i < kVlenBytes; i++) {
+    if (elementMaskSrc[i]) {
+      maskToElement |= (0x1ULL << i);
     }
   }
-  uint16_t maskVecGen = maskDataVec[uopIdx]; // uopIdx always 0.
-
-  uint8_t splitMask[2];
-  for (int i = 0; i < 2; i++) {
-    switch (sew) {
-      case 0:
-        splitMask[i] = (maskVecGen & (0xFF << (i*8))) >> (i*8);
-        break;
-      case 1:
-        splitMask[i] = (maskVecGen & (0xF << (i*4))) >> (i*4);
-        break;
-      case 2:
-        splitMask[i] = (maskVecGen & (0x3 << (i*2))) >> (i*2);
-        break;
-      case 3:
-        splitMask[i] = (maskVecGen & (0x1 << i)) >> i;
-        break;
-      default:
-        printf("split mask can not gen mask\n");
-        break;
-    }
-  }
-
-  uint16_t maskToElement = (splitMask[1] << 8) | splitMask[0];
 
   if (widenVd) {
     sew = sew + 1;
     input.sew = input.sew + 1;
   }
 
-  int number = (128 / 8) >> sew;
-  int half_number = number >> 1;
+  int number = (VLEN / 8) >> sew;
+  int words = kVlenWords;
+  int elements_per_word = number / words;
   int result_shift_len = 8 << sew;
 
   ElementOutput output_part[number];
-
   for (int i = 0; i < number; i++) {
     ElementInput element = select_vialuf_element(input, i, maskToElement, widenVd, widenVs2, isDstMask);
     switch (sew) {
@@ -279,362 +245,110 @@ VecOutput VGMIntegerALUF::get_expected_output(VecInput input) {
     }
   }
 
-  uint64_t maskToMgu[2];
-  for (int i = 0; i < 2; i++) {
-    if (isAddCarry) {
-      maskToMgu[i] = allMaskTrue;
-    } else {
-      maskToMgu[i] = srcMask[i];
-    }
-  }
-
-  int vdIdx = 0;
-
-  if (isNarrow) {
-    vdIdx = (uopIdx & 0x6) >> 1;
-  } else {
-    vdIdx = uopIdx;
-  }
-
-  uint16_t activeEn = 0;
-  uint16_t agnosticEn = 0;
-
-  uint16_t maskDataVecGen[8];
-  for (int i = 0; i < 8; i++) {
-    switch (sew) {
-      case 0:
-        if (i < 4) {
-          maskDataVecGen[i] = vec_data_to_mask_data(maskToMgu[0], 0, i);
-        } else {
-          maskDataVecGen[i] = vec_data_to_mask_data(maskToMgu[1], 0, i-4);
-        }
-        break;
-      case 1:
-        maskDataVecGen[i] = vec_data_to_mask_data(maskToMgu[0], 1, i);
-        break;
-      case 2:
-        maskDataVecGen[i] = vec_data_to_mask_data(maskToMgu[0], 2, i);
-        break; 
-      case 3:
-        maskDataVecGen[i] = vec_data_to_mask_data(maskToMgu[0], 3, i);
-        break;
-      default:
-        break;
-    }
-  }
-
-  uint16_t maskUsed = maskDataVecGen[vdIdx];
-
-  uint64_t bodyEn[2] = {0, 0};
-  uint64_t tailEn[2] = {0xffffffffffffffff, 0xffffffffffffffff};
-
-  int vlBytes = 0;
-  switch (sew) {
-    case 0:
-      vlBytes = vl & 0xff;
-      break;
-    case 1:
-      vlBytes = (vl & 0x7f) << 1;
-      break;
-    case 2:
-      vlBytes = (vl & 0x3f) << 2;
-      break;
-    case 3:
-      vlBytes = (vl & 0x1f) << 3;
-      break;
-    default:
-      break;
-  }
-
-  for (int i = 0; i < 2; i++) {
-    for (int j = 0; j < 64; j++) {
-      if ((i * 64 + j) < vlBytes) {
-        bodyEn[i] |= (0x1ULL << j);
-        tailEn[i] &= ~(0x1ULL << j);
-      }
-    }
-  }
-
-  uint16_t bodyEnInVd = 0;
-  uint16_t tailEnInVd = 0;
-  if (vdIdx < 4) {
-    bodyEnInVd = (bodyEn[0] & (0xFFFFULL << (vdIdx*numBytes))) >> (vdIdx*numBytes);
-    tailEnInVd = (tailEn[0] & (0xFFFFULL << (vdIdx*numBytes))) >> (vdIdx*numBytes);
-  } else {
-    bodyEnInVd = (bodyEn[1] & (0xFFFFULL << ((vdIdx-4)*numBytes))) >> ((vdIdx-4)*numBytes);
-    tailEnInVd = (tailEn[1] & (0xFFFFULL << ((vdIdx-4)*numBytes))) >> ((vdIdx-4)*numBytes);
-  }
-
-  uint16_t maskEn = 0;
-  switch (sew) {
-    case 0:
-      maskEn = maskUsed;
-      break;
-    case 1:
-      maskEn = n_copy_x_to_16(maskUsed & 0xFF, 2);
-      break;
-    case 2:
-      maskEn = n_copy_x_to_16(maskUsed & 0xF, 4);
-      break;
-    case 3:
-      maskEn = n_copy_x_to_16(maskUsed & 0x3, 8);
-      break;
-    default:
-      printf("bad sew\n");
-      break;
-  }
-
-  uint16_t maskOff = ~maskEn;
-  uint16_t maskAgnosticEn = 0;
-  uint16_t tailAgnosticEn = 0;
-  if (ma) {
-    maskAgnosticEn = maskOff & bodyEnInVd;
-  }
-  if (ta) {
-    tailAgnosticEn = tailEnInVd;
-  }
-  
   if (vl == 0) {
-    activeEn = 0;
-    agnosticEn = 0;
-  } else {
-    activeEn = bodyEnInVd & maskEn;
-    agnosticEn = maskAgnosticEn | tailAgnosticEn;
-  }
-
-  uint8_t byte1s = ~0;
-  uint8_t agnosticVecByte[numBytes];
-  uint8_t oldVdVecByte[numBytes];
-
-  for (int i = 0; i < numBytes; i++) {
-    if (i < 8) {
-      oldVdVecByte[i] = (oldVd[0] & (0xFFULL << (8*i))) >> (8*i);
-    } else {
-      oldVdVecByte[i] = (oldVd[1] & (0xFFULL << (8*(i-8)))) >> (8*(i-8));
-    }
-  }
-
-  for (int i = 0; i < numBytes; i++) {
-    if ((agnosticEn & (1 << i)) >> i) {
-      agnosticVecByte[i] = byte1s;
-    } else {
-      agnosticVecByte[i] = oldVdVecByte[i];
-    }
-  }
-
-  if (vl == 0) {
-    output.result[0] = input.src3[0];
-    output.result[1] = input.src3[1];
-    output.fflags[0] = 0;
-    output.fflags[1] = 0;
-    output.vxsat = 0;
-  } else {
-    uint16_t vxsat = 0;
-    for (int i = 0; i < 2; i++) {
-      output.result[i] = 0;
+    for (int i = 0; i < kVlenWords; i++) {
+      output.result[i] = input.src3[i];
       output.fflags[i] = 0;
+    }
+    output.vxsat = 0;
+    return output;
+  }
 
-      for (int j = 0; j < half_number; j++) {
-        output.result[i] += ((uint64_t)output_part[i*half_number+j].result << (j*result_shift_len));
-        if (fuOpType == VASUB_VV) {
-          if (i == 0) {
-            vxsat |= output_part[i*half_number+j].vxsat;
-          } else {
-            vxsat |= (output_part[i*half_number+j].vxsat << (i*half_number));
-          }
+  uint64_t packedResult[kVlenWords];
+  for (int i = 0; i < words; i++) {
+    packedResult[i] = 0;
+    output.fflags[i] = 0;
+    for (int j = 0; j < elements_per_word; j++) {
+      int idx = i * elements_per_word + j;
+      packedResult[i] |= ((uint64_t)output_part[idx].result << (j * result_shift_len));
+      if (verbose) {
+        printf("%s::%s ResultJoint i:%d j:%d result:%lx fflags:%x\n", typeid(this).name(), __func__, i, j, packedResult[i], output.fflags[i]);
+      }
+    }
+  }
+
+  output.vxsat = 0;
+  if (isSat || isNclip) {
+    for (int i = 0; i < number; i++) {
+      if ((i < vl) && elementMaskActive[i] && output_part[i].vxsat) {
+        output.vxsat = 1;
+        break;
+      }
+    }
+  }
+
+  if (isDstMask) {
+    uint64_t maskOut[kVlenWords];
+    for (int i = 0; i < kVlenWords; i++) {
+      maskOut[i] = 0;
+    }
+
+    for (int bit = 0; bit < VLEN; bit++) {
+      uint64_t bitval = 1;
+      if (bit < number) {
+        if (bit >= vl) {
+          bitval = 1;
+        } else if (isOpMask) {
+          bitval = output_part[bit].result & 0x1ULL;
+        } else if (elementMaskActive[bit]) {
+          bitval = output_part[bit].result & 0x1ULL;
         } else {
-          vxsat |= (output_part[i*half_number+j].vxsat << (i*half_number+j));
+          bitval = ma ? 1 : oldMaskBits[bit];
         }
-        if (verbose) {
-          printf("%s::%s ResultJoint i:%d j:%d result:%lx fflags:%x, vxsat=%hx\n", typeid(this).name(), __func__,i,j,output.result[i], output.fflags[i], vxsat);
-        }
+      }
+
+      if (bitval) {
+        int word = bit / 64;
+        int off = bit % 64;
+        maskOut[word] |= (0x1ULL << off);
       }
     }
 
-    if (isMisc) {
-      if (isNclip) {
-        switch (sew) {
-          case 0: vxsat = vxsat & 0xf0f; break;
-          case 1: vxsat = ((vxsat & 0xc) << 2) | (vxsat & 0x3); break;
-          case 2: vxsat = ((vxsat & 0x2) << 3) | (vxsat & 0x1); break;
-          default:
-            break;
-        }
-      } else {
-        vxsat = 0;
-      }
+    for (int i = 0; i < kVlenWords; i++) {
+      output.result[i] = maskOut[i];
+      output.fflags[i] = 0;
+    }
+    return output;
+  }
+
+  uint8_t oldVdBytes[kVlenBytes];
+  uint8_t resultBytes[kVlenBytes];
+  uint8_t finalBytes[kVlenBytes];
+  for (int i = 0; i < kVlenWords; i++) {
+    for (int j = 0; j < 8; j++) {
+      int byte_idx = i * 8 + j;
+      oldVdBytes[byte_idx] = (oldVd[i] >> (8 * j)) & 0xFF;
+      resultBytes[byte_idx] = (packedResult[i] >> (8 * j)) & 0xFF;
+    }
+  }
+
+  int bytes_per_elem = 1 << sew;
+  int vlBytes = vl * bytes_per_elem;
+  if (vlBytes > kVlenBytes) {
+    vlBytes = kVlenBytes;
+  }
+
+  for (int i = 0; i < kVlenBytes; i++) {
+    bool body = (i < vlBytes);
+    int elem_idx = i / bytes_per_elem;
+    bool mask_on = elementMaskActive[elem_idx];
+    bool active = body && mask_on;
+    bool agnostic = (ma && body && !mask_on) || (ta && !body);
+
+    if (active) {
+      finalBytes[i] = resultBytes[i];
+    } else if (agnostic) {
+      finalBytes[i] = 0xFF;
     } else {
-      if (isSat) {
-        switch (sew) {
-          case 1: vxsat = n_copy_x_to_16(vxsat & 0xFF, 2); break;
-          case 2: vxsat = n_copy_x_to_16(vxsat & 0xF, 4); break;
-          case 3: vxsat = n_copy_x_to_16(vxsat & 0x3, 8); break;
-          default:
-            break;
-        }
-      }
+      finalBytes[i] = oldVdBytes[i];
     }
+  }
 
-    for (int i = 0; i < 16; i ++) {
-      bool tmp = ((vxsat & activeEn) & (0x1ULL << i)) >> i;
-      output.vxsat |= tmp;
-    }
-
-    uint8_t vdVecByte[numBytes];
-
-    for (int i = 0; i < numBytes; i++) {
-      if (i < 8) {
-        vdVecByte[i] = (output.result[0] & (0xFFULL << (8*i))) >> (8*i);
-      } else {
-        vdVecByte[i] = (output.result[1] & (0xFFULL << (8*(i-8)))) >> (8*(i-8));
-      }
-    }
-    
-    uint64_t resVecByte[numBytes];
-    for (int i = 0; i < numBytes; i++) {
-      if ((activeEn & (1 << i)) >> i) {
-        resVecByte[i] = vdVecByte[i];
-      } else {
-        resVecByte[i] = agnosticVecByte[i];
-      }
-    }
-
-    if (isDstMask) {
-      uint64_t dstVd[2] = {oldVd[0], oldVd[1]};
-      uint64_t mgtuVd[2] = {0, 0};
-      if (isOpMask) {
-        for (int i = 0; i < 2; i++) {
-          for (int j = 0; j < 64; j++) {
-            if (((i*64)+j) < vl) {
-              mgtuVd[i] |= (output.result[i] & (0x1ULL << j));
-            } else {
-              mgtuVd[i] |= (0x1ULL << j);
-            }
-          }
-        }
-      } else {
-        uint16_t maskOldVd = 0;
-        uint16_t maskBits = 0;
-        
-        switch (sew) {
-          case 0: {
-            if (uopIdx < 4) {
-              maskOldVd = (oldVd[0] & (0xFFFF << (uopIdx*16))) >> (uopIdx*16);
-              maskBits = (maskToMgu[0] & (0xFFFF << (uopIdx*16))) >> (uopIdx*16);
-            } else {
-              maskOldVd = (oldVd[1] & (0xFFFF << ((uopIdx-4)*16))) >> (uopIdx-4)*16;
-              maskBits = (maskToMgu[1] & (0xFFFF << ((uopIdx-4)*16))) >> (uopIdx-4)*16;
-            }
-            break;
-          }
-          case 1: {
-            maskOldVd = (oldVd[0] & (0xFF << (uopIdx*8))) >> (uopIdx*8);
-            maskBits = (maskToMgu[0] & (0xFF << (uopIdx*8))) >> (uopIdx*8);
-            break;
-          }
-          case 2: {
-            maskOldVd = (oldVd[0] & (0xF << (uopIdx*4))) >> (uopIdx*4);
-            maskBits = (maskToMgu[0] & (0xF << (uopIdx*4))) >> (uopIdx*4);
-            break;
-          }
-          case 3: {
-            maskOldVd = (oldVd[0] & (0x3 << (uopIdx*2))) >> (uopIdx*2);
-            maskBits = (maskToMgu[0] & (0x3 << (uopIdx*2))) >> (uopIdx*2); 
-            break;
-          }
-          default: break;
-        }
-
-        uint16_t maskMaOrOldVd = 0;
-        for (int i = 0; i < 16; i++) {
-          if (ma) {
-            maskMaOrOldVd |= (0x1ULL << i);
-          } else {
-            maskMaOrOldVd |= (maskOldVd & (0x1ULL << i));
-          }
-        }
-      
-        for (int i = 0; i < 2; i++) {
-          output.result[i] = 0;
-          output.fflags[i] = 0;
-          for (int j = 0; j < half_number; j++) {
-            output.result[i] += ((uint64_t)output_part[i*half_number+j].result << j);
-          }
-        }
-      
-        uint16_t resultTmp = 0;
-        switch (sew) {
-          case 0:
-            resultTmp = (output.result[1] << 8) | output.result[0];
-            break;
-          case 1:
-            resultTmp = ((output.result[1] & 0xF) << 4) | (output.result[0] & 0xF);
-            break;
-          case 2:
-            resultTmp = ((output.result[1] & 0x3) << 2) | (output.result[0] & 0x3);
-            break;
-          case 3:
-            resultTmp = ((output.result[1] & 0x1) << 1) | (output.result[0] & 0x1);
-            break;
-          default:
-            break;
-        }
-        
-        uint16_t maskVec = 0;
-        for (int i = 0; i < 16; i++) {
-          if (((maskBits & (0x1ULL << i)) >> i) & 0x1u) {
-            maskVec |= (resultTmp & (0x1ULL << i));
-          } else {
-            maskVec |= (maskMaOrOldVd & (0x1ULL << i));
-          }
-        }
-
-        switch (sew) {
-          case 0: {
-            if (uopIdx < 4) {
-              dstVd[0] = (dstVd[0] & (~(0xFFFF << (uopIdx * 16)))) | (maskVec << (uopIdx * 16));
-            } else {
-              dstVd[1] = (dstVd[1] & (~(0xFFFF << ((uopIdx - 4) * 16)))) | (maskVec << ((uopIdx-4) * 16));
-            }
-            break;
-          }
-          case 1: {
-            dstVd[0] = (dstVd[0] & (~(0xFF << (uopIdx*8)))) | ((maskVec & 0xFF) << (uopIdx*8));
-            break;
-          }
-          case 2: {
-            dstVd[0] = (dstVd[0] & (~(0xF << (uopIdx*4)))) | ((maskVec & 0xF) << (uopIdx*4));
-            break;
-          }
-          case 3: {
-            dstVd[0] = (dstVd[0] & (~(0x3 << (uopIdx*2)))) | ((maskVec & 0x3) << (uopIdx*2));
-            break;
-          }
-          default:
-            break;
-        }
-      
-      
-        for (int i = 0; i < 2; i++) {
-          for (int j = 0; j < 64; j++) {
-            if (((i*64)+j) < vl) {
-              mgtuVd[i] |= (dstVd[i] & (0x1ULL << j));
-            } else {
-              mgtuVd[i] |= (0x1ULL << j);
-            }
-          }
-        }
-      }
-      output.result[0] = mgtuVd[0];
-      output.result[1] = mgtuVd[1];
-    } else {
-      output.result[0] = 0;
-      output.result[1] = 0;
-
-      for (int i = 0; i < 8; i++) {
-        output.result[0] |= (resVecByte[i] << (8*i));
-        output.result[1] |= (resVecByte[i+8] << (8*i));
-      }
+  for (int i = 0; i < kVlenWords; i++) {
+    output.result[i] = 0;
+    for (int j = 0; j < 8; j++) {
+      int byte_idx = i * 8 + j;
+      output.result[i] |= ((uint64_t)finalBytes[byte_idx] << (8 * j));
     }
   }
 

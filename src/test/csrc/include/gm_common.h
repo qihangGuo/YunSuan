@@ -146,7 +146,7 @@ class VGMIntegerALUF : public VPUGoldenModel {
     virtual ElementOutput calculation_e32(ElementInput input);
     virtual ElementOutput calculation_e64(ElementInput input);
   private:
-    ElementInput select_vialuf_element(VecInput input, int idx, uint16_t mask, bool widenVd, bool widenVs2, bool dstMask);
+    ElementInput select_vialuf_element(VecInput input, int idx, uint64_t mask, bool widenVd, bool widenVs2, bool dstMask);
   //   VecOutput get_output_vialuF(VecInput input);
   //   VecOutput  vialuF_calculation_vvv(VecInput input);
   //   VecOutput  vialuF_calculation_vvw(VecInput input);
