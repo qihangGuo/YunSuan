@@ -27,16 +27,27 @@ object BitsExtend {
   }
 }
 
-// Extract 16-bit mask signal from 128-bit v0
+// Extract per-uop mask bits from v0
 object MaskExtract {
-  def apply(vmask128b: UInt, uopIdx: UInt, sew: SewOH) = {
-    val extracted = Wire(UInt(16.W))
-    extracted := Mux1H(Seq.tabulate(8)(uopIdx === _.U),
-                 Seq.tabulate(8)(idx => Mux1H(sew.oneHot, Seq(16,8,4,2).map(stride => 
-                                              vmask128b((idx+1)*stride-1, idx*stride)))))
+  def apply(vmask: UInt, uopIdx: UInt, sew: SewOH) = {
+    val vlenB = VIFuParam.VLENB
+    val maxUop = VIFuParam.maxUop
+    val extracted = Wire(UInt(vlenB.W))
+    extracted := Mux1H(
+      Seq.tabulate(maxUop)(uopIdx === _.U),
+      Seq.tabulate(maxUop)(idx =>
+        Mux1H(
+          sew.oneHot,
+          Seq(vlenB, vlenB/2, vlenB/4, vlenB/8).map(stride =>
+            vmask((idx + 1) * stride - 1, idx * stride)
+          )
+        )
+      )
+    )
     extracted
   }
 }
+
 
 // E.g., 0.U(3.W) => b"1111_11111"  1.U(3.W) => b"1111_1110"  7.U(3.W) => b"1000_0000"
 object UIntToCont0s {
@@ -62,41 +73,47 @@ object UIntToCont1s {
   }
 }
 
-// Tail generation: 16 bits. Note: uopIdx < 8
+// Tail generation: VLENB bits. Note: uopIdx < maxUop
 object TailGen {
   def apply(vl: UInt, uopIdx: UInt, eew: SewOH, narrow: Bool = false.B): UInt = {
-    val tail = Wire(UInt(16.W))
-    // vl - uopIdx * 128/eew
-    val nElemRemain = Cat(0.U(1.W), vl) - Mux1H(eew.oneHot, Seq(4,3,2,1).map(x => Cat(Mux(narrow, uopIdx(2,1), uopIdx(2,0)), 0.U(x.W))))
-    val maxNElemInOneUop = Mux1H(eew.oneHot, Seq(16.U, 8.U, 4.U, 2.U))
+    val vlenb = VIFuParam.VLENB
+    val elemIdxWidth = log2Ceil(vlenb)
+    val tail = Wire(UInt(vlenb.W))
+    // vl - uopIdx * VLEN/eew
+    val shiftSeq = Seq(elemIdxWidth, elemIdxWidth - 1, elemIdxWidth - 2, elemIdxWidth - 3)
+    val nElemRemain = Cat(0.U(1.W), vl) - Mux1H(eew.oneHot, shiftSeq.map(x => Cat(Mux(narrow, uopIdx(2,1), uopIdx(2,0)), 0.U(x.W))))
+    val maxNElemInOneUop = Mux1H(eew.oneHot, Seq(vlenb.U, (vlenb / 2).U, (vlenb / 4).U, (vlenb / 8).U))
     val vl_width = vl.getWidth
-    require(vl_width == 8)
+    require(vl_width == VIFuParam.wVL)
     when (nElemRemain(vl_width)) {
-      tail := ~0.U(16.W)
+      tail := ~0.U(vlenb.W)
     }.elsewhen (nElemRemain >= maxNElemInOneUop) {
       tail := 0.U
     }.otherwise {
-      tail := UIntToCont0s(nElemRemain(3, 0), 4)
+      tail := UIntToCont0s(nElemRemain(elemIdxWidth - 1, 0), elemIdxWidth)
     }
     tail
   }
 }
 
-// Prestart generation: 16 bits. Note: uopIdx < 8
+// Prestart generation: VLENB bits. Note: uopIdx < maxUop
 object PrestartGen {
   def apply(vstart: UInt, uopIdx: UInt, eew: SewOH, narrow: Bool = false.B): UInt = {
-    val prestart = Wire(UInt(16.W))
-    // vstart - uopIdx * 128/eew
-    val nElemRemain = Cat(0.U(1.W), vstart) - Mux1H(eew.oneHot, Seq(4,3,2,1).map(x => Cat(Mux(narrow, uopIdx(2,1), uopIdx(2,0)), 0.U(x.W))))
-    val maxNElemInOneUop = Mux1H(eew.oneHot, Seq(16.U, 8.U, 4.U, 2.U))
+    val vlenb = VIFuParam.VLENB
+    val elemIdxWidth = log2Ceil(vlenb)
+    val prestart = Wire(UInt(vlenb.W))
+    // vstart - uopIdx * VLEN/eew
+    val shiftSeq = Seq(elemIdxWidth, elemIdxWidth - 1, elemIdxWidth - 2, elemIdxWidth - 3)
+    val nElemRemain = Cat(0.U(1.W), vstart) - Mux1H(eew.oneHot, shiftSeq.map(x => Cat(Mux(narrow, uopIdx(2,1), uopIdx(2,0)), 0.U(x.W))))
+    val maxNElemInOneUop = Mux1H(eew.oneHot, Seq(vlenb.U, (vlenb / 2).U, (vlenb / 4).U, (vlenb / 8).U))
     val vstart_width = vstart.getWidth
-    require(vstart_width == 7)
+    require(vstart_width == log2Ceil(VIFuParam.VLEN))
     when (nElemRemain(vstart_width)) {
       prestart := 0.U
     }.elsewhen (nElemRemain >= maxNElemInOneUop) {
-      prestart := ~0.U(16.W)
+      prestart := ~0.U(vlenb.W)
     }.otherwise {
-      prestart := ~(UIntToCont0s(nElemRemain(3, 0), 4))
+      prestart := ~(UIntToCont0s(nElemRemain(elemIdxWidth - 1, 0), elemIdxWidth))
     }
     prestart
   }
@@ -106,6 +123,7 @@ object PrestartGen {
 object MaskReorg {
   // sew = 8: unchanged, sew = 16: 00000000abcdefgh -> aabbccddeeffgghh, ...
   def splash(bits: UInt, sew: SewOH): UInt = {
-    Mux1H(sew.oneHot, Seq(1,2,4,8).map(k => Cat(bits(16/k -1, 0).asBools.map(Fill(k, _)).reverse)))
+    val bitWidth = bits.widthOption.getOrElse(VIFuParam.VLENB)
+    Mux1H(sew.oneHot, Seq(1,2,4,8).map(k => Cat(bits(bitWidth / k -1, 0).asBools.map(Fill(k, _)).reverse)))
   }
 }

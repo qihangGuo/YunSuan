@@ -79,9 +79,9 @@ class VIFuInfo extends Bundle {
   val ma = Bool()
   val ta = Bool()
   val vlmul = UInt(3.W)
-  val vl = UInt(8.W)
-  val vstart = UInt(7.W)
-  val uopIdx = UInt(6.W)
+  val vl = UInt(VIFuParam.wVL.W)
+  val vstart = UInt(VIFuParam.wVSTART.W)
+  val uopIdx = UInt(VIFuParam.wUOPIDX.W)
   val vxrm = UInt(2.W)
 }
 
@@ -90,14 +90,14 @@ class VIFuInput extends Bundle {
   val info = new VIFuInfo
   val srcType = Vec(2, UInt(4.W))  // 0: vs2   1: vs1
   val vdType  = UInt(4.W)
-  val vs1 = UInt(128.W)
-  val vs2 = UInt(128.W)
-  val old_vd = UInt(128.W)
-  val mask = UInt(128.W)
+  val vs1 = UInt(VIFuParam.VLEN.W)
+  val vs2 = UInt(VIFuParam.VLEN.W)
+  val old_vd = UInt(VIFuParam.VLEN.W)
+  val mask = UInt(VIFuParam.VLEN.W)
 }
 
 class VIFuOutput extends Bundle {
-  val vd = UInt(128.W)
+  val vd = UInt(VIFuParam.VLEN.W)
   val vxsat = Bool()
 }
 
