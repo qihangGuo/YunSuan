@@ -18,7 +18,7 @@ VecOutput VPUGoldenModel::get_expected_output(VecInput input) {
   int i2f_number = (VLEN / 8) >> (i2f_inputType+2);
   int i2f_half_number = i2f_number >> 1;
   int i2f_outputType = (input.fuOpType >> 1) & 0X3;
-  int imul_number = 2;
+  int imul_number = number;
   softfloat_detectTininess = softfloat_tininess_afterRounding;
   uint64_t mask = 0;
   VecOutput output;

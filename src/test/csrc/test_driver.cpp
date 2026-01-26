@@ -525,8 +525,9 @@ void TestDriver::get_random_input() {
     if (!test_type.pick_fuOpType) { input.fuOpType = gen_random_optype(); }
     else { input.fuOpType = test_type.fuOpType; }
     if (input.fuOpType == IMUL_MULW7) {
-      input.src1[0] &= 0x7f;
-      input.src1[1] &= 0x7f;
+      for (int i = 0; i < vlenInWord; ++i) {
+        input.src1[i] &= 0x7f;
+      }
     }
     input.sew = 3;
     input.is_frs1 = false;
