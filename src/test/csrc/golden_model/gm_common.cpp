@@ -9,12 +9,13 @@ VPUGoldenModel::VPUGoldenModel():
 
 VecOutput VPUGoldenModel::get_expected_output(VecInput input) {
   int sew = input.sew;
-  int number = (128 / 8) >> sew;
-  int half_number = number >> 1;
+  int number = (VLEN / 8) >> sew;
+  int words = VLEN / 64;
+  int half_number = number / words;
   int result_shift_len = 8 << sew;
   int widenNorrow = (input.fuOpType >> 3) & 0X3;
   int i2f_inputType = (input.fuOpType >> 3) & 0X1;
-  int i2f_number = (128 / 8) >> (i2f_inputType+2);
+  int i2f_number = (VLEN / 8) >> (i2f_inputType+2);
   int i2f_half_number = i2f_number >> 1;
   int i2f_outputType = (input.fuOpType >> 1) & 0X3;
   int imul_number = 2;
@@ -238,7 +239,7 @@ VecOutput VPUGoldenModel::get_expected_output(VecInput input) {
     }
   }
   
-  for (int i = 0; i < 2; i++) {
+  for (int i = 0; i < words; i++) {
     output.result[i] = 0;
     output.fflags[i] = 0;
     for (int j = 0; j < half_number; j++) {
@@ -335,7 +336,7 @@ VecOutput VPUGoldenModel::get_expected_output(VecInput input) {
 
 ElementInput VPUGoldenModel::select_element(VecInput input, int idx) {
   int sew = input.sew;
-  int number = (128 / 8) >> sew;
+  int number = (VLEN / 8) >> sew;
   if (idx > number) { printf("Bad idx %d > %d at sew %d\n", idx, number, sew); exit(1); }
   int widen_idx = input.uop_idx % 2 == 0 ? idx : number + idx;
 
