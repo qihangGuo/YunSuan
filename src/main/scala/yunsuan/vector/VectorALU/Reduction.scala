@@ -8,10 +8,11 @@ import yunsuan.vector._
 import yunsuan.vector.alu.VAluOpcode._
 
 class Reduction extends Module {
-  val VLEN = 128
-  val xLen = 64
+  val VLEN = VIFuParam.VLEN
+  val xLen = VIFuParam.XLEN
   val NLanes = VLEN / 64
   val vlenb = VLEN / 8
+  val halfVLEN = VLEN / 2
   val io = IO(new Bundle {
     val in = Flipped(ValidIO(new VIFuInput))
     val out = Output(new VIFuOutput)
@@ -45,7 +46,7 @@ class Reduction extends Module {
   val vd_vsew = vdType(1, 0)
   val vd_vsew_bytes = 1.U << vd_vsew
   val vd_vsew_bits = 8.U << vd_vsew
-  val vlRemain = Wire(UInt(8.W))
+  val vlRemain = Wire(UInt(VIFuParam.wVL.W))
   val vlRemainBytes = vlRemain << vsew
   val eewVs1 = SewOH(srcTypeVs1(1, 0))
   val eewVs2 = SewOH(srcTypeVs2(1, 0))
@@ -232,12 +233,12 @@ class Reduction extends Module {
     val (cout, out) = (bits(9), bits(8, 1))
   }
 
-  val cin = Wire(Vec(16, Bool()))
-  val cout = Wire(Vec(16, Bool()))
-  val hi_vs = Wire(UInt(128.W))
-  val lo_vs = Wire(UInt(128.W))
+  val cin = Wire(Vec(vlenb, Bool()))
+  val cout = Wire(Vec(vlenb, Bool()))
+  val hi_vs = Wire(UInt(VLEN.W))
+  val lo_vs = Wire(UInt(VLEN.W))
 
-  val vd_logical_alu = Wire(UInt(128.W))
+  val vd_logical_alu = Wire(UInt(VLEN.W))
   // stage 1
   vd_logical_alu := 0.U
   when(vredand_vs_reg_s1) {
@@ -253,11 +254,11 @@ class Reduction extends Module {
   // Widen
   // stage 1
   val vs_hi_widen = Mux1H(eewVs2_reg_s1, Seq(8, 16, 32).map(sew =>
-    Cat(UIntSplit(vs12m_bits_reg_s1(127, 64), sew).map(BitsExtend(_, 2 * sew, signed_reg_s1)).reverse)))
+    Cat(UIntSplit(vs12m_bits_reg_s1(VLEN - 1, halfVLEN), sew).map(BitsExtend(_, 2 * sew, signed_reg_s1)).reverse)))
   val vs_lo_widen = Mux1H(eewVs2_reg_s1, Seq(8, 16, 32).map(sew =>
-    Cat(UIntSplit(vs12m_bits_reg_s1(63, 0), sew).map(BitsExtend(_, 2 * sew, signed_reg_s1)).reverse)))
-  hi_vs := Mux(widen_reduction_uop_reg_s1, vs_hi_widen, vs12m_bits_reg_s1(255, 128))
-  lo_vs := Mux(widen_reduction_uop_reg_s1, vs_lo_widen, vs12m_bits_reg_s1(127, 0))
+    Cat(UIntSplit(vs12m_bits_reg_s1(halfVLEN - 1, 0), sew).map(BitsExtend(_, 2 * sew, signed_reg_s1)).reverse)))
+  hi_vs := Mux(widen_reduction_uop_reg_s1, vs_hi_widen, vs12m_bits_reg_s1(2 * VLEN - 1, VLEN))
+  lo_vs := Mux(widen_reduction_uop_reg_s1, vs_lo_widen, vs12m_bits_reg_s1(VLEN - 1, 0))
 
   val vs1_zero = Wire(UInt(64.W))
   val vs1_zero_logical = Wire(UInt(64.W))
@@ -277,13 +278,27 @@ class Reduction extends Module {
   for (i <- 0 until 4) {
     vd_logical(i) := 0.U
   }
+  def foldLogical(data: UInt, op: (UInt, UInt) => UInt): UInt = {
+    val width = data.getWidth
+    if (width <= 64) {
+      data
+    } else {
+      val half = width / 2
+      foldLogical(op(data(width - 1, half), data(half - 1, 0)), op)
+    }
+  }
+
+  val vs2_logical_and = foldLogical(vs12m_bits_reg_s1(VLEN - 1, 0), _ & _)
+  val vs2_logical_or = foldLogical(vs12m_bits_reg_s1(VLEN - 1, 0), _ | _)
+  val vs2_logical_xor = foldLogical(vs12m_bits_reg_s1(VLEN - 1, 0), _ ^ _)
+
   // stage 1
   when(vredand_vs_reg_s1) {
-    vd_logical(0) := vs1_zero_logical_reg_s1 & vs12m_bits_reg_s1(127, 64) & vs12m_bits_reg_s1(63, 0)
+    vd_logical(0) := vs1_zero_logical_reg_s1 & vs2_logical_and
   }.elsewhen(vredor_vs_reg_s1) {
-    vd_logical(0) := vs1_zero_logical_reg_s1 | vs12m_bits_reg_s1(127, 64) | vs12m_bits_reg_s1(63, 0)
+    vd_logical(0) := vs1_zero_logical_reg_s1 | vs2_logical_or
   }.elsewhen(vredxor_vs_reg_s1) {
-    vd_logical(0) := vs1_zero_logical_reg_s1 ^ vs12m_bits_reg_s1(127, 64) ^ vs12m_bits_reg_s1(63, 0)
+    vd_logical(0) := vs1_zero_logical_reg_s1 ^ vs2_logical_xor
   }
 
   when(vredand_vs_reg_s1) {
@@ -311,7 +326,7 @@ class Reduction extends Module {
   }
   // end stage 1
   // stage 1 to 2
-  val vd_reg = RegInit(0.U(128.W))
+  val vd_reg = RegInit(0.U(VLEN.W))
   val old_vd_reg = RegEnable(Mux(alu_uop_reg_s1 || widen_alu_uop_reg_s1, lo_vs, old_vd_reg_s1), 0.U, fire_reg_s1)
   val signed_reg = RegEnable(signed_reg_s1, false.B, fire_reg_s1)
   val vd_vsew_reg = RegEnable(vd_vsew_reg_s1, 0.U, fire_reg_s1)
@@ -332,28 +347,28 @@ class Reduction extends Module {
   val reg_vred_logical = reg_vredand_vs || reg_vredor_vs || reg_vredxor_vs
   // stage 2
   // alu
-  val vs_hi = Wire(UInt(128.W))
-  val vs_lo = Wire(UInt(128.W))
-  val vs_lo_adjust = Wire(UInt(128.W))
+  val vs_hi = Wire(UInt(VLEN.W))
+  val vs_lo = Wire(UInt(VLEN.W))
+  val vs_lo_adjust = Wire(UInt(VLEN.W))
 
-  val vd = Wire(Vec(16, UInt(8.W)))
-  val vd_max = Wire(Vec(16, UInt(8.W)))
-  val alu_vd = Wire(UInt(128.W))
-  val less = Wire(Vec(16, Bool()))
-  val sel_lo = Wire(Vec(16, Bool()))
+  val vd = Wire(Vec(vlenb, UInt(8.W)))
+  val vd_max = Wire(Vec(vlenb, UInt(8.W)))
+  val alu_vd = Wire(UInt(VLEN.W))
+  val less = Wire(Vec(vlenb, Bool()))
+  val sel_lo = Wire(Vec(vlenb, Bool()))
 
   vs_hi := vd_reg
   vs_lo := old_vd_reg
   // Subtract: bit negate
-  vs_lo_adjust := vs_lo ^ Fill(128, sub_reg)
+  vs_lo_adjust := vs_lo ^ Fill(VLEN, sub_reg)
 
-  for (i <- 0 until 16) {
+  for (i <- 0 until vlenb) {
     less(i) := Mux(signed_reg, (vs_hi(8 * i + 7) ^ vs_lo_adjust(8 * i + 7)) ^ cout(i), !cout(i))
   }
 
   sel_lo := less.map(_ === isVredmax_reg)
 
-  for (i <- 0 until 16) {
+  for (i <- 0 until vlenb) {
     val sel = Mux1H(Seq(
       eewVd_reg.is8 -> sel_lo(i),
       eewVd_reg.is16 -> sel_lo((i / 2) * 2 + 1),
@@ -363,7 +378,7 @@ class Reduction extends Module {
     vd_max(i) := Mux(sel, vs_lo(8 * i + 7, 8 * i), vs_hi(8 * i + 7, 8 * i))
   }
 
-  for (i <- 0 until 16) {
+  for (i <- 0 until vlenb) {
     val adder_8b = new Adder_8b(vs_lo_adjust(8 * i + 7, 8 * i), vs_hi(8 * i + 7, 8 * i), cin(i))
     cin(i) := Mux1H(eewVd_reg.oneHot, Seq(1, 2, 4, 8).map(n =>
       if ((i % n) == 0) sub_reg else cout(i - 1))
