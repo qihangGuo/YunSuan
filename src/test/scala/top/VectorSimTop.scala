@@ -13,7 +13,7 @@ import yunsuan.scalar.FPCVT
 import yunsuan.scalar.Mul
 
 trait VSPParameter {
-  val VLEN       : Int = 128
+  val VLEN       : Int = VIFuParam.VLEN
   val XLEN       : Int = 64
   val VIA_latency: Int = 0 // TODO: change to 1
   val VIAF_latency: Int = 1 // TODO:
@@ -50,8 +50,8 @@ class VPUTestBundle extends Bundle with VSPParameter
 class VPUTestModule extends Module with VSPParameter
 
 class VecInfoBundle extends VPUTestBundle {
-  val vstart    = UInt(7.W)     // 0-127
-  val vl        = UInt(8.W)     // 0-128
+  val vstart    = UInt(log2Ceil(VLEN).W)     // 0-(VLEN-1)
+  val vl        = UInt(9.W)     // 0-VLEN
   val vlmul     = UInt(3.W)
 
   val vm        = Bool()        // 0: masked, 1: unmasked
@@ -158,10 +158,25 @@ class SimTop() extends VPUTestModule {
     vfd_result_valid.map(_ := false.B)
   }
 
+  private def widenCat(src: Vec[UInt], i: Int): UInt = {
+    val widenPair = i / 2
+    val widenWord = i % 2
+    Cat(
+      src(2 * widenPair + 1)(32 * (widenWord + 1) - 1, 32 * widenWord),
+      src(2 * widenPair)(32 * (widenWord + 1) - 1, 32 * widenWord)
+    )
+  }
+
   finish_uncertain := Mux(in.fuType === VPUTestFuType.vid, vid_result_valid,vfd_result_valid.reduce(_&&_))
 
   for (i <- 0 until (VLEN / XLEN)) {
     val (src1, src2, src3) = (in.src(0)(i), in.src(1)(i), in.src(2)(i))
+    val widenBaseWords = (VLEN / 128).U
+    val widenSrcBase = Mux(widen && uop_idx(0), widenBaseWords, 0.U)
+    val widenSrcWordIdx = widenSrcBase + (i / 2).U
+    val vs2WidenWord = in.src(0)(widenSrcWordIdx)
+    val vs1WidenWord = Mux(src_widen, in.src(1)(i), in.src(1)(widenSrcWordIdx))
+    val widenHalfSel = (i % 2 == 1).B
     val vfa = Module(new VectorFloatAdder) // result at next cycle
     val vff = Module(new VectorFloatFMA)
     val vfd = Module(new VectorFloatDivider)
@@ -173,14 +188,11 @@ class SimTop() extends VPUTestModule {
 
     require(vfa.io.fp_a.getWidth == XLEN)
     vfa.io.fire := busy
-    vfa.io.fp_a := src1
-    vfa.io.fp_b := src2
-    //io.widen_a Cat(vs2(95,64),vs2(31,0)) or Cat(vs2(127,96),vs2(63,32))
-    //io.widen_b Cat(vs1(95,64),vs1(31,0)) or Cat(vs1(127,96),vs1(63,32))
-    vfa.io.widen_a := Cat(in.src(0)(1)(31+i*32,0+i*32),in.src(0)(0)(31+i*32,0+i*32))
-    vfa.io.widen_b := Cat(in.src(1)(1)(31+i*32,0+i*32),in.src(1)(0)(31+i*32,0+i*32))
+    vfa.io.fp_a := Mux(widen, vs2WidenWord, src1)
+    vfa.io.fp_b := Mux(widen, vs1WidenWord, src2)
+    vfa.io.widen_a := vs2WidenWord
+    vfa.io.widen_b := vs1WidenWord
     vfa.io.frs1  := in.src(1)(0) // VS1(63,0)
-    vfa.io.fp_b := src2
     // TODO: change mask
     val maskTemp = Cat(src3(48),src3(32),src3(16),src3(0))
     vfa.io.mask := Mux1H(
@@ -190,7 +202,7 @@ class SimTop() extends VPUTestModule {
         (sew === 3.U) -> maskTemp(0)
       )
     )
-    vfa.io.uop_idx := uop_idx(0)
+    vfa.io.uop_idx := Mux(widen, widenHalfSel, uop_idx(0))
     // TODO: which module to handle dest's original value
     vfa.io.round_mode := rm
     vfa.io.fp_format := sew
@@ -256,14 +268,12 @@ class SimTop() extends VPUTestModule {
     via_result.vxsat := 0.U // DontCare
 
     vff.io.fire := busy
-    vff.io.fp_a := src1
-    vff.io.fp_b := src2
+    vff.io.fp_a := Mux(widen, vs2WidenWord, src1)
+    vff.io.fp_b := Mux(widen, vs1WidenWord, src2)
     vff.io.fp_c := src3
-    //io.widen_a Cat(vs2(95,64),vs2(31,0)) or Cat(vs2(127,96),vs2(63,32))
-    //io.widen_b Cat(vs1(95,64),vs1(31,0)) or Cat(vs1(127,96),vs1(63,32))
-    vff.io.widen_a := Cat(in.src(0)(1)(31+i*32,0+i*32),in.src(0)(0)(31+i*32,0+i*32))
-    vff.io.widen_b := Cat(in.src(1)(1)(31+i*32,0+i*32),in.src(1)(0)(31+i*32,0+i*32))
-    vff.io.uop_idx := uop_idx(0)
+    vff.io.widen_a := vs2WidenWord
+    vff.io.widen_b := vs1WidenWord
+    vff.io.uop_idx := Mux(widen, widenHalfSel, uop_idx(0))
     vff.io.frs1  := in.src(1)(0) // VS1(63,0)
     vff.io.round_mode := rm
     vff.io.fp_format := sew
@@ -372,8 +382,8 @@ class SimTop() extends VPUTestModule {
   val vid_sign = vid_opcode(0)
   val vid_rem = vid_opcode(1)
   val vid = Module(new VectorIdiv)
-  val src1 = Cat(in.src(0)(1), in.src(0)(0))
-  val src2 = Cat(in.src(1)(1), in.src(1)(0))
+  val src1 = Cat(in.src(0).reverse)
+  val src2 = Cat(in.src(1).reverse)
   vid.io.div_in_valid := busy && !has_issued && fuType === VPUTestFuType.vid
   vid.io.sign := vid_sign
   vid.io.dividend_v := src1
@@ -381,23 +391,19 @@ class SimTop() extends VPUTestModule {
   vid.io.flush := false.B
   vid.io.sew := sew
   vid.io.div_out_ready := busy
-  val vid_fflags_0 = LookupTreeDefault(sew, 0.U, List(
-    0.U -> vid.io.d_zero(7, 0),
-    1.U -> vid.io.d_zero(3, 0),
-    2.U -> vid.io.d_zero(1, 0),
-    3.U -> vid.io.d_zero(0, 0)
-  ))
-  val vid_fflags_1 = LookupTreeDefault(sew, 0.U, List(
-    0.U -> vid.io.d_zero(15, 8),
-    1.U -> vid.io.d_zero(15, 4),
-    2.U -> vid.io.d_zero(15, 2),
-    3.U -> vid.io.d_zero(15, 1)
-  ))
   vid_result_valid := vid.io.div_out_valid
-  vid_result.result(0) := Mux(vid_rem, vid.io.div_out_rem_v, vid.io.div_out_q_v)(XLEN - 1, 0)
-  vid_result.result(1) := Mux(vid_rem, vid.io.div_out_rem_v, vid.io.div_out_q_v)(VLEN - 1, XLEN)
-  vid_result.fflags(0) := ZeroExt(vid_fflags_0, 20)
-  vid_result.fflags(1) := ZeroExt(vid_fflags_1, 20)
+  val vid_out = Mux(vid_rem, vid.io.div_out_rem_v, vid.io.div_out_q_v)
+  vid_result.result.zip(UIntSplit(vid_out, XLEN)).foreach { case (out, in) => out := in }
+  vid_result.fflags.foreach(_ := 0.U)
+  for (i <- 0 until VLEN / XLEN) {
+    val fflags8b = Mux1H(UIntToOH(sew, 4), Seq(
+      vid.io.d_zero(i * 8 + 7, i * 8),
+      ZeroExt(vid.io.d_zero(i * 4 + 3, i * 4), 8),
+      ZeroExt(vid.io.d_zero(i * 2 + 1, i * 2), 8),
+      ZeroExt(vid.io.d_zero(i), 8)
+    ))
+    vid_result.fflags(i) := ZeroExt(fflags8b, 20)
+  }
   vid_result.vxsat := 0.U
 
   val vimac = Module(new VIMac)
@@ -415,10 +421,10 @@ class SimTop() extends VPUTestModule {
   vimac.io.in.bits.srcType(0) := Cat(0.U(1.W), opcode(6), sew)  // vs2
   vimac.io.in.bits.srcType(1) := Cat(0.U(1.W), opcode(5), sew)  // vs1
   vimac.io.in.bits.vdType := Cat(0.U(1.W), opcode(4), Mux(widen, sew + 1.U(1.W), sew))
-  vimac.io.in.bits.vs1 := Cat(in.src(0)(1), in.src(0)(0))
-  vimac.io.in.bits.vs2 := Cat(in.src(1)(1), in.src(1)(0))
-  vimac.io.in.bits.old_vd := Cat(in.src(2)(1), in.src(2)(0))
-  vimac.io.in.bits.mask := Cat(in.src(3)(1), in.src(3)(0))
+  vimac.io.in.bits.vs1 := Cat(in.src(0).reverse)
+  vimac.io.in.bits.vs2 := Cat(in.src(1).reverse)
+  vimac.io.in.bits.old_vd := Cat(in.src(2).reverse)
+  vimac.io.in.bits.mask := Cat(in.src(3).reverse)
 
   vimac_result.result.zip(UIntSplit(vimac.io.out.bits.vd, XLEN)).foreach { case (vstOut, vimacOut) => vstOut := vimacOut }
   vimac_result.vxsat := vimac.io.out.bits.vxsat

@@ -1,9 +1,11 @@
 #ifndef __IO_TYPE_H
 #define __IO_TYPE_H
 
+#include "vpu_constant.h"
+
 struct VecInfo {
-  uint8_t vstart; // 0-127
-  uint8_t vl; // 0-128
+  uint8_t vstart; // 0-(VLEN-1)
+  uint16_t vl; // 0-VLEN
   uint8_t vlmul; // only 3 bits
   bool vm; // 0: masked, 1: unmasked
   bool ta; // 0: undisturbed, 1: agnostic
@@ -11,10 +13,10 @@ struct VecInfo {
 };
 
 struct VecInput {
-  uint64_t src1[2];
-  uint64_t src2[2];
-  uint64_t src3[2];
-  uint64_t src4[2];
+  uint64_t src1[VLEN / 64];
+  uint64_t src2[VLEN / 64];
+  uint64_t src3[VLEN / 64];
+  uint64_t src4[VLEN / 64];
   uint8_t fuType; // only 5bits(or 2bits?)
   uint8_t fuOpType;
   uint8_t uop_idx; // only 6 bits
@@ -29,16 +31,16 @@ struct VecInput {
 };
 
 struct VecOutput {
-  uint64_t result[2] = {0,0};
-  uint32_t fflags[2] = {0,0}; // only 20bits for each op
+  uint64_t result[VLEN / 64] = {0};
+  uint32_t fflags[VLEN / 64] = {0}; // only 20bits for each op
   uint64_t vxsat = 0;    // NOTE: The length of the aligned structure must be an integer multiple of the largest alignment parameter (PPB) in the member
 };
 
 struct VecInputE8 {
-  uint8_t src1[16];
-  uint8_t src2[16];
-  uint8_t src3[16];
-  uint8_t src4[16];
+  uint8_t src1[VLEN / 8];
+  uint8_t src2[VLEN / 8];
+  uint8_t src3[VLEN / 8];
+  uint8_t src4[VLEN / 8];
   uint8_t fuType; // only 5bits(or 2bits?)
   uint8_t fuOpType;
   uint8_t uop_idx; // only 6 bits
@@ -51,10 +53,10 @@ struct VecInputE8 {
 };
 
 struct VecInputE16 {
-  uint16_t src1[8];
-  uint16_t src2[8];
-  uint16_t src3[8];
-  uint16_t src4[8];
+  uint16_t src1[VLEN / 16];
+  uint16_t src2[VLEN / 16];
+  uint16_t src3[VLEN / 16];
+  uint16_t src4[VLEN / 16];
   uint8_t fuType; // only 5bits(or 2bits?)
   uint8_t fuOpType;
   uint8_t uop_idx; // only 6 bits
@@ -67,10 +69,10 @@ struct VecInputE16 {
 };
 
 struct VecInputE32 {
-  uint32_t src1[4];
-  uint32_t src2[4];
-  uint32_t src3[4];
-  uint32_t src4[4];
+  uint32_t src1[VLEN / 32];
+  uint32_t src2[VLEN / 32];
+  uint32_t src3[VLEN / 32];
+  uint32_t src4[VLEN / 32];
   uint8_t fuType; // only 5bits(or 2bits?)
   uint8_t fuOpType;
   uint8_t uop_idx; // only 6 bits
@@ -83,21 +85,21 @@ struct VecInputE32 {
 };
 
 struct VecOutputE8 {
-  uint8_t result[16];
+  uint8_t result[VLEN / 8];
   // uint8_t fflags[2]; // only 20bits for each op
-  uint8_t vxsat[16];
+  uint8_t vxsat[VLEN / 8];
 };
 
 struct VecOutputE16 {
-  uint16_t result[8];
-  uint8_t fflags[8]; // only 20bits for each op
-  uint8_t vxsat[8];
+  uint16_t result[VLEN / 16];
+  uint8_t fflags[VLEN / 16]; // only 20bits for each op
+  uint8_t vxsat[VLEN / 16];
 };
 
 struct VecOutputE32 {
-  uint32_t result[4];
-  uint8_t fflags[4]; // only 20bits for each op
-  uint8_t vxsat[4];
+  uint32_t result[VLEN / 32];
+  uint8_t fflags[VLEN / 32]; // only 20bits for each op
+  uint8_t vxsat[VLEN / 32];
 };
 
 
@@ -125,7 +127,7 @@ struct ElementInput {
 struct VSlideInput {
   uint64_t *src_data;
   uint64_t *prev_data;
-  uint16_t mask;
+  uint32_t mask;
   uint64_t slide;
   int mask_start_idx;
   int slide_base;
@@ -138,7 +140,7 @@ struct VSlideOneInput {
   uint64_t *src_data_lo;
   uint64_t *src_data_hi;
   uint64_t *prev_data;
-  uint16_t mask;
+  uint32_t mask;
   int slide;
   int mask_start_idx;
   int elements;
@@ -152,7 +154,7 @@ struct VRGatherInput {
   uint64_t *index_data;
   uint64_t *table_data;
   uint64_t *prev_data;
-  uint16_t mask;
+  uint32_t mask;
   uint64_t index;
   int mask_start_idx;
   int table_range_min;
@@ -166,7 +168,7 @@ struct VRGatherInput {
 struct VCompressInput {
   uint64_t *src_data;
   uint64_t *prev_data;
-  uint16_t mask;
+  uint32_t mask;
   int os_base;
   int pmos;
   int elements;
