@@ -5,6 +5,9 @@ import chisel3.util._
 import yunsuan.vector._
 
 class VIMac extends Module {
+  val VLEN = VIFuParam.VLEN
+  val VLENB = VIFuParam.VLENB
+  val lanes = VLEN / 64
   val io = IO(new Bundle {
     val in = Flipped(ValidIO(new VIFuInput))
     val out = ValidIO(new VIFuOutput)
@@ -26,8 +29,14 @@ class VIMac extends Module {
   val vstart_gte_vl = io.in.bits.info.vstart >= io.in.bits.info.vl
   val widen = srcTypeVs1(1, 0) =/= vdType(1, 0)
 
-  val vIMac64bs = Seq.fill(2)(Module(new VIMac64b))
-  for (i <- 0 until 2) {
+  val vs1_32 = UIntSplit(vs1, 32)
+  val vs1_64 = UIntSplit(vs1, 64)
+  val vs2_32 = UIntSplit(vs2, 32)
+  val vs2_64 = UIntSplit(vs2, 64)
+  val oldVd_64 = UIntSplit(oldVd, 64)
+
+  val vIMac64bs = Seq.fill(lanes)(Module(new VIMac64b))
+  for (i <- 0 until lanes) {
     vIMac64bs(i).io.fire := io.in.valid
     vIMac64bs(i).io.info := io.in.bits.info
     vIMac64bs(i).io.srcType := io.in.bits.srcType
@@ -37,56 +46,57 @@ class VIMac extends Module {
     vIMac64bs(i).io.isSub := opcode.isSub
     vIMac64bs(i).io.widen := widen
     vIMac64bs(i).io.isFixP := opcode.isFixP
-    vIMac64bs(i).io.vs1 := Mux(widen, Cat(UIntSplit(vs1, 32)(i+2), UIntSplit(vs1, 32)(i)),
-                               UIntSplit(vs1, 64)(i))
-    vIMac64bs(i).io.vs2 := Mux(opcode.overWriteMultiplicand, UIntSplit(oldVd, 64)(i),
-                           Mux(widen, Cat(UIntSplit(vs2, 32)(i+2), UIntSplit(vs2, 32)(i)),
-                               UIntSplit(vs2, 64)(i)))
-    vIMac64bs(i).io.oldVd := Mux(opcode.overWriteMultiplicand, UIntSplit(vs2, 64)(i),
-                                 UIntSplit(oldVd, 64)(i))
+    vIMac64bs(i).io.vs1 := Mux(widen, Cat(vs1_32(i + lanes), vs1_32(i)), vs1_64(i))
+    vIMac64bs(i).io.vs2 := Mux(opcode.overWriteMultiplicand, oldVd_64(i),
+                           Mux(widen, Cat(vs2_32(i + lanes), vs2_32(i)), vs2_64(i)))
+    vIMac64bs(i).io.oldVd := Mux(opcode.overWriteMultiplicand, vs2_64(i), oldVd_64(i))
   }
 
   /**
    * Output stage
    */
   val eewVdS2 = RegNext(RegNext(eewVd))
-  val oldVdS2 = Wire(UInt(128.W))
+  val oldVdS2 = Wire(UInt(VLEN.W))
   oldVdS2 := RegNext(RegNext(oldVd))
   val taS2 = RegNext(RegNext(io.in.bits.info.ta))
   val maS2 = RegNext(RegNext(io.in.bits.info.ma))
   val vmS2 = RegNext(RegNext(io.in.bits.info.vm))
   // Output tail/prestart/mask handling
   //---- Tail gen ----
-  val tail = TailGen(io.in.bits.info.vl, uopIdx, eewVd)
-  val tailS2 = RegNext(RegNext(tail))
+  val tail = Wire(UInt(VLENB.W))
+  tail := TailGen(io.in.bits.info.vl, uopIdx, eewVd)
+  val tailS1 = RegNext(tail, 0.U(VLENB.W))
+  val tailS2 = RegNext(tailS1, 0.U(VLENB.W))
   //---- Prestart gen ----
-  val prestart = PrestartGen(io.in.bits.info.vstart, uopIdx, eewVd)
-  val prestartS2 = RegNext(RegNext(prestart))
+  val prestart = Wire(UInt(VLENB.W))
+  prestart := PrestartGen(io.in.bits.info.vstart, uopIdx, eewVd)
+  val prestartS1 = RegNext(prestart, 0.U(VLENB.W))
+  val prestartS2 = RegNext(prestartS1, 0.U(VLENB.W))
   //---- vstart >= vl ----
   val vstart_gte_vl_S2 = RegNext(RegNext(vstart_gte_vl))
 
   val tailReorg = MaskReorg.splash(tailS2, eewVdS2)
   val prestartReorg = MaskReorg.splash(prestartS2, eewVdS2)
-  val mask16bS2 = RegNext(RegNext(MaskExtract(mask, uopIdx, eewVd)))
-  val mask16bReorg = MaskReorg.splash(mask16bS2, eewVdS2)
-  val updateType = Wire(Vec(16, UInt(2.W))) // 00: keep result  10: old_vd  11: write 1s
-  for (i <- 0 until 16) {
+  val maskVlenbS2 = RegNext(RegNext(MaskExtract(mask, uopIdx, eewVd)))
+  val maskVlenbReorg = MaskReorg.splash(maskVlenbS2, eewVdS2)
+  val updateType = Wire(Vec(VLENB, UInt(2.W))) // 00: keep result  10: old_vd  11: write 1s
+  for (i <- 0 until VLENB) {
     when (prestartReorg(i) || vstart_gte_vl_S2) {
       updateType(i) := 2.U
     }.elsewhen (tailReorg(i)) {
       updateType(i) := Mux(taS2, 3.U, 2.U)
-    }.elsewhen (!vmS2 && !mask16bReorg(i)) {
+    }.elsewhen (!vmS2 && !maskVlenbReorg(i)) {
       updateType(i) := Mux(maS2, 3.U, 2.U)
     }.otherwise {
       updateType(i) := 0.U
     }
   }
-  // finalResult = result & bitsKeep | bitsReplace   (all are 128 bits)
+  // finalResult = result & bitsKeep | bitsReplace   (all are VLEN bits)
   val bitsKeep = Cat(updateType.map(x => Mux(x(1), 0.U(8.W), ~0.U(8.W))).reverse)
   val bitsReplace = Cat(updateType.zipWithIndex.map({case (x, i) => 
         Mux(!x(1), 0.U(8.W), Mux(x(0), ~0.U(8.W), UIntSplit(oldVdS2, 8)(i)))}).reverse)
 
-  val vdResult = Cat(vIMac64bs(1).io.vd, vIMac64bs(0).io.vd)
+  val vdResult = Cat(vIMac64bs.map(_.io.vd).reverse)
   io.out.bits.vd := vdResult & bitsKeep | bitsReplace
   io.out.bits.vxsat := (Cat(vIMac64bs.map(_.io.vxsat).reverse) &
                    Cat(updateType.map(_(1) === false.B).reverse)).orR
