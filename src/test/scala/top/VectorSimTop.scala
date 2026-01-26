@@ -20,7 +20,6 @@ trait VSPParameter {
   val VFF_latency: Int = 3 // TODO: check only mul and mul+add, different or not
   val VFD_latency: Int = 99
   val VFA_latency: Int = 1
-  val VPERM_latency: Int = 1
   val VID_latency: Int = 99
   val VCVT_latency: Int = 2 // ??
   val VIMAC_latency: Int = 2
@@ -32,7 +31,6 @@ object VPUTestFuType { // only use in test, difftest with xs
   def vff = "b0000_0001".U(8.W)
   def vfd = "b0000_0010".U(8.W)
   def via = "b0000_0011".U(8.W)
-  def vperm = "b0000_0100".U(8.W)
   def viaf = "b0000_0101".U(8.W)
   def vid = "b0000_0110".U(8.W)
   def vcvt= "b0000_0111".U(8.W)
@@ -112,7 +110,6 @@ class SimTop() extends VPUTestModule {
       VPUTestFuType.vff -> VFF_latency.U,
       VPUTestFuType.vfd -> VFD_latency.U,
       VPUTestFuType.via -> VIA_latency.U,
-      VPUTestFuType.vperm -> VPERM_latency.U,
       VPUTestFuType.viaf -> VIAF_latency.U,
       VPUTestFuType.vid -> VID_latency.U,
       VPUTestFuType.vcvt -> VCVT_latency.U,
@@ -144,7 +141,6 @@ class SimTop() extends VPUTestModule {
   val vff_result = Wire(new VSTOutputIO)
   val vfd_result = Reg(new VSTOutputIO)
   val via_result = Wire(new VSTOutputIO)
-  val vperm_result = Wire(new VSTOutputIO)
   val viaf_result = Wire(new VSTOutputIO)
   val vfd_result_valid = RegInit(VecInit(Seq.fill(VLEN/XLEN)(false.B)))
   val vid_result = Wire(new VSTOutputIO)
@@ -336,28 +332,6 @@ class SimTop() extends VPUTestModule {
     imul_result.vxsat := 0.U
   }
 
-  val vperm = Module(new VPermTop)
-  vperm.io.vs1 := Cat(in.src(0)(1), in.src(0)(0))
-  vperm.io.vs2 := Cat(in.src(1)(1), in.src(1)(0))
-  vperm.io.old_vd := Cat(in.src(2)(1), in.src(2)(0))
-  vperm.io.mask := Cat(in.src(3)(1), in.src(3)(0))
-  vperm.io.vs1_type := ZeroExt(sew, 4)
-  vperm.io.vs2_type := ZeroExt(sew, 4)
-  vperm.io.vd_type := ZeroExt(sew, 4)
-
-  vperm.io.opcode := opcode
-  vperm.io.uop_idx := uop_idx
-  vperm.io.vstart := vstart
-  vperm.io.vl := vl
-  vperm.io.vlmul := vlmul
-  vperm.io.vm := vm
-  vperm.io.ta := ta
-  vperm.io.ma := ma
-  vperm_result.result(0) := vperm.io.res_vd(XLEN-1, 0)
-  vperm_result.result(1) := vperm.io.res_vd(VLEN-1, XLEN)
-  vperm_result.fflags(0) := 0.U
-  vperm_result.fflags(1) := 0.U
-  vperm_result.vxsat := 0.U
 
   val viaf = Module(new VIAluFWrapper)
   viaf.io.in.bits.fuType := in.fuType
@@ -437,7 +411,6 @@ class SimTop() extends VPUTestModule {
     VPUTestFuType.vff -> vff_result,
     VPUTestFuType.vfd -> vfd_result,
     VPUTestFuType.via -> via_result,
-    VPUTestFuType.vperm -> vperm_result,
     VPUTestFuType.viaf -> viaf_result,
     VPUTestFuType.vid -> vid_result,
     VPUTestFuType.vcvt -> vcvt_result,

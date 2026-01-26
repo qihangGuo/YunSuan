@@ -10,7 +10,7 @@ extern "C"{
 // NOTE: should keep same with chisel.
 // TODO: may dynamic generate this file when compiling chisel
 
-#define VLEN 128
+#define VLEN 256
 #define XLEN 64
 
 // #define FU_NUM 8 // for random
@@ -28,9 +28,8 @@ extern "C"{
 #define IntegerMul (11)
 // #define ALL_FUTYPES {VFloatAdder,VFloatFMA,VFloatDivider,VIntegerALU,VPermutation,VIntegerALUV2,VIntegerDivider,VFloatCvt}
 
-//will be delated
-#define FU_NUM 10
-#define ALL_FUTYPES {VFloatFMA,VFloatDivider,VIntegerALU,VPermutation,VIntegerDivider,VFloatCvt,FloatCvtF2X,FloatCvtI2F,VIntegerMAC,IntegerMul}
+
+#define ALL_FUTYPES {VFloatAdder,VFloatFMA,VFloatDivider,VIntegerALU,VIntegerDivider,VFloatCvt,FloatCvtF2X,FloatCvtI2F,VIntegerMAC}
 
 #define INT_ROUNDING(result, xrm, gb) \
   do { \
