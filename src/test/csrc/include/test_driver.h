@@ -52,7 +52,7 @@ public:
   ~TestDriver();
 
   void set_default_value(VSimTop *dut_ptr);
-  void set_test_type();
+  void set_test_type(bool pick_fuType, uint8_t fuType, bool pick_fuOpType, uint16_t fuOpType);
   void gen_next_test_case(/*type wanted*/);
   
   uint8_t gen_random_futype(std::initializer_list<uint8_t> futype_list);

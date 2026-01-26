@@ -14,7 +14,7 @@ TestDriver::TestDriver():
   issued(false), verbose(false), keepinput(false)
 {
   // aviod random value
-  set_test_type();
+  set_test_type(false, VIntegerMAC, false, VSMUL);
   gen_next_test_case();
 }
 
@@ -26,12 +26,13 @@ void TestDriver::set_default_value(VSimTop *dut_ptr) {
   dut_ptr->io_out_ready = true;
 }
 // fix set_test_type to select fuType
-void TestDriver::set_test_type() {
-  test_type.pick_fuType = false;
-  test_type.pick_fuOpType = false;
-  test_type.fuType = VIntegerMAC;
-  test_type.fuOpType = VSMUL;
-  printf("Set Test Type Res: fuType:%d fuOpType:%d\n", test_type.fuType, test_type.fuOpType);
+void TestDriver::set_test_type(bool pick_fuType, uint8_t fuType, bool pick_fuOpType, uint16_t fuOpType) {
+  test_type.pick_fuType = pick_fuType;
+  test_type.pick_fuOpType = pick_fuOpType;
+  test_type.fuType = pick_fuType ? fuType : VIntegerMAC;
+  test_type.fuOpType = pick_fuOpType ? fuOpType : VSMUL;
+  printf("Set Test Type Res: fuType:%d fuOpType:%d (pick_fuType=%d pick_fuOpType=%d)\n",
+         test_type.fuType, test_type.fuOpType, test_type.pick_fuType, test_type.pick_fuOpType);
 }
 
 void TestDriver::gen_next_test_case() {

@@ -14,6 +14,10 @@ struct EmuArgs {
   uint64_t max_operations;
   uint64_t log_begin, log_end;
   uint64_t enable_waveform;
+  bool pick_fuType;
+  uint8_t fuType;
+  bool pick_fuOpType;
+  uint16_t fuOpType;
 
   bool verbose;
 
@@ -24,6 +28,10 @@ struct EmuArgs {
     log_begin = -1;
     log_end = -1;
     enable_waveform = false;
+    pick_fuType = false;
+    fuType = 0;
+    pick_fuOpType = false;
+    fuOpType = 0;
     verbose = false;
   }
 };
