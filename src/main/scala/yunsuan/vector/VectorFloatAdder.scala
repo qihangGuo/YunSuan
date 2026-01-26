@@ -25,7 +25,6 @@ import yunsuan.{VfaddOpCode, VectorElementFormat}
   *15: Classify
   **/
 class VectorFloatAdder() extends Module {
-  val VLEN = 128
   val exponentWidth = 11
   val significandWidth = 53
   val floatWidth = exponentWidth + significandWidth
@@ -49,7 +48,7 @@ class VectorFloatAdder() extends Module {
     val maskForReduction = Input(UInt(8.W))
     val is_vfwredosum = Input (Bool()) // true -> vfwredosum inst
     val is_fold       = Input (UInt(3.W))
-    val vs2_fold      = Input (UInt(VLEN.W))
+    val vs2_fold      = Input (UInt(128.W)) // TODO: replace with floatWidth*2
 
     val fp_result     = Output(UInt(floatWidth.W))
     val fflags        = Output(UInt(20.W))

@@ -9,8 +9,8 @@ import yunsuan.vector._
 import yunsuan.vector.alu.VAluOpcode._
 
 class VMask extends Module {
-  val VLEN = 128
-  val xLen = 64
+  val VLEN = VIFuParam.VLEN
+  val xLen = VIFuParam.XLEN
   val LaneWidth = 64
   val NLanes = VLEN / 64
   val vlenb = VLEN / 8
@@ -44,7 +44,7 @@ class VMask extends Module {
   val vsew_bytes = 1.U << vsew
   val vsew_bits = 8.U << vsew
   val ele_cnt = vlenb.U >> vsew
-  val vlRemain = Wire(UInt(8.W))
+  val vlRemain = Wire(UInt(VIFuParam.wVL.W))
   val vlRemainBytes = vlRemain << vsew
   val eewVs1 = SewOH(srcTypeVs1(1, 0))
   val eewVs2 = SewOH(srcTypeVs2(1, 0))
@@ -223,7 +223,7 @@ class VMask extends Module {
   }
   //end stage 1 to stage 2
 
-  val vstartRemain = Wire(UInt(7.W))
+  val vstartRemain = Wire(UInt(log2Ceil(VLEN).W))
   // stage 0
   vstartRemain := Mux(vid_v, Mux(vstart >= (uopIdx(5, 1) << vsew_plus1), (vstart - (uopIdx(5, 1) << vsew_plus1)), 0.U), 0.U)
   val vstartRemain_reg_s1 = RegEnable(vstartRemain, 0.U, fire)

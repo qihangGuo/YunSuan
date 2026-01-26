@@ -6,6 +6,7 @@ object VIFuParam {
   val VLEN = 128
   val XLEN = 64
   val VLENB = VLEN / 8
+  val maxUop = 8
   val wVL = log2Ceil(VLEN + 1)
   val wVSTART = log2Ceil(VLEN)
   val wUOPIDX = 6
