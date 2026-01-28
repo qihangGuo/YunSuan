@@ -552,6 +552,8 @@ package object yunsuan {
     def fcvt_wu_h         = "b10_001000".U(8.W)
     def fcvt_l_h          = "b10_011001".U(8.W)
     def fcvt_lu_h         = "b10_011000".U(8.W)
+    def fcvt_h_lu         = "b01_011000".U(8.W)
+    def fcvt_h_l          = "b01_011001".U(8.W)
     def fround            = "b11_000000".U(8.W)
     def froundnx          = "b11_000100".U(8.W)
     def fcvtmod_w_d     = "b1_10_010001".U(9.W)
