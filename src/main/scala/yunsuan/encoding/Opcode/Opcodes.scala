@@ -221,6 +221,7 @@ object Opcodes {
     private val MSIF   = bb"0101"
     private val MSOF   = bb"0110"
     private val IOTA   = bb"0111"
+    private val REV8   = bb"000"
 
     /**
      * sub opcode of [[SHIFT]] and [[CSHIFT]]
@@ -567,11 +568,11 @@ object Opcodes {
 
     def isScalVro(implicit op: UInt): Bool = getOpClass === CSHIFT || getOpClass === SHIFT && getOp.isOneOf(ROR, ROL)
     def isNotVro(implicit op: UInt): Bool = getOpClass === CSHIFT
-    def isZvbbOthers(implicit op: UInt): Bool = false.B // not supported yet
+    def isZvbbOthers(implicit op: UInt): Bool = isVrev8 // not supported yet
     def isVcpop(implicit op: UInt): Bool = false.B // not supported yet
     def isVbrev(implicit op: UInt): Bool = false.B // not supported yet
     def isVbrev8(implicit op: UInt): Bool = false.B // not supported yet
-    def isVrev8(implicit op: UInt): Bool = false.B // not supported yet
+    def isVrev8(implicit op: UInt): Bool = getOpClass === BITOP && getOp === REV8 // not supported yet
     def isCountZero(implicit op: UInt): Bool = false.B // not supported yet
     def isCtz(implicit op: UInt): Bool = false.B // not supported yet
     def isPredicateAlwaysTrue(implicit op: UInt): Bool = getOpClass === ADDER && getOp.isOneOf(ADC, SBC)
