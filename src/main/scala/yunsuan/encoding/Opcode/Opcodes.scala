@@ -520,6 +520,10 @@ object Opcodes {
     def isZext4(implicit op: UInt): Bool = getOpClass === MOVE && getOp === ZEXT && getDataType === S2F4DV
     def isZext8(implicit op: UInt): Bool = getOpClass === MOVE && getOp === ZEXT && getDataType === S2F8DV
 
+    def isExt2(implicit op: UInt): Bool = getDataType === S2F2DV
+    def isExt4(implicit op: UInt): Bool = getDataType === S2F4DV
+    def isExt8(implicit op: UInt): Bool = getDataType === S2F8DV
+
     // May be encoded in
     def isUnsigned(implicit op: UInt): Bool = dataWidthAndTypeIsOneOf(
       ADDER -> Seq(MINU, MAXU),
@@ -570,6 +574,7 @@ object Opcodes {
     def isVrev8(implicit op: UInt): Bool = false.B // not supported yet
     def isCountZero(implicit op: UInt): Bool = false.B // not supported yet
     def isCtz(implicit op: UInt): Bool = false.B // not supported yet
+    def isPredicateAlwaysTrue(implicit op: UInt): Bool = getOpClass === ADDER && getOp.isOneOf(ADC, SBC)
   }
 
   object VIAluOpcode extends VIAluOpcode
