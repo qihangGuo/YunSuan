@@ -40,6 +40,7 @@ class SRT16Divint(bit_width: Int) extends Module {
     val divisor = Input(UInt(bit_width.W))
     val flush = Input(Bool())
     val d_zero = Output(Bool())
+    val outValidAhead2Cycle = Output(Bool())
     val sew = Input(UInt(2.W)) // multi bit width
     /*
     'b00: I8
@@ -114,6 +115,7 @@ class SRT16Divint(bit_width: Int) extends Module {
   // part 3
   io.div_ready := stateReg(idle)
   io.div_out_valid := stateReg(output)
+  io.outValidAhead2Cycle := early_finish && stateReg(pre_1) || iter_finish && stateReg(iter)
 
   // before pre_0 stage
   val x = ZeroExt(io.dividend,64)  // x dividend

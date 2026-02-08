@@ -28,6 +28,8 @@ class VectorFloatDivider() extends Module {
     val finish_ready_i = Input(Bool())
     val fpdiv_res_o = Output(UInt(64.W))
     val fflags_o = Output(UInt(20.W))
+    val outValidAhead3Cycle = Output(Bool())
+    val wakeupSuccess = Input(Bool())
   })
   val is_sqrt_i = io.is_sqrt_i
   val u_vector_float_sqrt_r16 = Module(new fpsqrt_vector_r16())
@@ -69,6 +71,9 @@ class VectorFloatDivider() extends Module {
       u_vector_float_sqrt_r16.finish_valid_o -> u_vector_float_sqrt_r16.fflags_o
     )
   )
+  io.outValidAhead3Cycle := u_vector_float_divider_r64.io.outValidAhead3Cycle || u_vector_float_sqrt_r16.outValidAhead3Cycle
+  u_vector_float_divider_r64.io.wakeupSuccess := io.wakeupSuccess
+  u_vector_float_sqrt_r16.wakeupSuccess := io.wakeupSuccess
 }
 
 class VectorFloatDividerR64() extends Module {
@@ -94,6 +99,8 @@ class VectorFloatDividerR64() extends Module {
     val finish_ready_i = Input(Bool())
     val fpdiv_res_o = Output(UInt(64.W))
     val fflags_o = Output(UInt(20.W))
+    val outValidAhead3Cycle = Output(Bool())
+    val wakeupSuccess = Input(Bool())
 
   })
 
@@ -221,7 +228,24 @@ class VectorFloatDividerR64() extends Module {
   }
   io.start_ready_o := fsm_q(FSM_PRE_0_BIT)
   val start_handshaked = io.start_valid_i & io.start_ready_o
-  io.finish_valid_o := fsm_q(FSM_POST_1_BIT) | (fsm_q(FSM_POST_0_BIT) & !is_vec_q & ~res_is_denormal_f64_0)
+  val wakeupSuccess = io.wakeupSuccess
+  val wakeupSuccessReg = RegInit(Bool(), true.B)
+  wakeupSuccessReg := Mux(io.flush_i, true.B, wakeupSuccess)
+  val outValidBlock = Reg(UInt(2.W))
+  when(start_handshaked && !io.is_vec_i && (early_finish || opb_is_power_of_2_f64_0) || io.outValidAhead3Cycle) {
+    outValidBlock := "b10".U
+  }.elsewhen(!fsm_q(FSM_PRE_0_BIT)) {
+    outValidBlock := outValidBlock >> 1
+  }
+  val isBlock = outValidBlock.orR
+  io.finish_valid_o := !isBlock & (fsm_q(FSM_POST_1_BIT) | (fsm_q(FSM_POST_0_BIT) & !is_vec_q & ~res_is_denormal_f64_0))
+  val iter_num_q = Reg(UInt(4.W))
+  val fp_format_onehot_q = Reg(UInt(3.W))
+  val fp_format_q_is_fp16 = fp_format_onehot_q(0)
+  io.outValidAhead3Cycle := !wakeupSuccessReg ||
+    start_handshaked && !io.is_vec_i && (early_finish || opb_is_power_of_2_f64_0) ||
+    fsm_q(FSM_ITER_BIT) && Mux(is_vec_q | res_is_denormal_f64_0, iter_num_q === 1.U, iter_num_q === 2.U) ||
+    fsm_q(FSM_PRE_2_BIT) && fp_format_q_is_fp16
 
   val opa_sign_f64_0 = Mux1H(
     Seq(
@@ -513,10 +537,8 @@ class VectorFloatDividerR64() extends Module {
     divided_by_zero_f32_1,
     divided_by_zero_f64_0
   )
-  val fp_format_onehot_q = Reg(UInt(3.W))
   val fp_format_q_is_fp64 = fp_format_onehot_q(2)
   val fp_format_q_is_fp32 = fp_format_onehot_q(1)
-  val fp_format_q_is_fp16 = fp_format_onehot_q(0)
   val rm_q = Reg(UInt(3.W))
   val out_sign_q = Reg(UInt(4.W))
   val res_is_nan_q = Reg(UInt(4.W))
@@ -552,7 +574,6 @@ class VectorFloatDividerR64() extends Module {
 
 
   val out_exp_diff_en = start_handshaked | fsm_q(FSM_PRE_2_BIT)
-  val iter_num_q = Reg(UInt(4.W))
 
 
   val out_exp_diff_d_f64_0 = Mux(

@@ -27,6 +27,7 @@ class VectorIdiv extends Module {
     val div_out_valid = Output(Bool())
     val div_out_q_v = Output(UInt(Vectorwidth.W))
     val div_out_rem_v = Output(UInt(Vectorwidth.W))
+    val outValidAhead3Cycle = Output(Bool())
   })
 
   val finish = Wire(Bool())
@@ -90,6 +91,7 @@ class VectorIdiv extends Module {
   val divide_8_rem_result = Wire(Vec(8,UInt(8.W)))
   val divide_8_finish = Wire(Vec(8,Bool()))
   val divide_8_d_zero = Wire(Vec(8,Bool()))
+  val divide_8_outValidAhead2Cycle = Wire(Vec(8, Bool()))
   for (i <-0 until 8) {
     val begin = i * 8
     val end = (i + 1) * 8 - 1
@@ -105,12 +107,14 @@ class VectorIdiv extends Module {
     divide_8_q_result(i) := divide_8.io.div_out_q
     divide_8_rem_result(i) := divide_8.io.div_out_rem
     divide_8_d_zero(i) := divide_8.io.d_zero
+    divide_8_outValidAhead2Cycle(i) := divide_8.io.outValidAhead2Cycle
   }
   // I16
   val divide_16_q_result = Wire(Vec(4,UInt(16.W)))//additional field, storing both I8 and I16 results
   val divide_16_rem_result = Wire(Vec(4,UInt(16.W)))
   val divide_16_finish = Wire(Vec(4,Bool()))
   val divide_16_d_zero = Wire(Vec(4,Bool()))
+  val divide_16_outValidAhead2Cycle = Wire(Vec(4, Bool()))
 
   for (i <- 0 until 4) {
     val begin_I16 = i * 16
@@ -136,6 +140,7 @@ class VectorIdiv extends Module {
     divide_16_rem_result(i) := divide_16.io.div_out_rem
     divide_16_finish(i) := divide_16.io.div_out_valid
     divide_16_d_zero(i) := divide_16.io.d_zero
+    divide_16_outValidAhead2Cycle(i) := divide_16.io.outValidAhead2Cycle
 
   }
   val divide_16_I8_q = Cat(divide_16_q_result(3)(Index_bound(0),0), divide_16_q_result(2)(Index_bound(0),0),divide_16_q_result(1)(Index_bound(0),0),divide_16_q_result(0)(Index_bound(0),0))
@@ -147,6 +152,7 @@ class VectorIdiv extends Module {
   val divide_32_rem_result = Wire(Vec(2,UInt(32.W)))
   val divide_32_finish = Wire(Vec(2,Bool()))
   val divide_32_d_zero = Wire(Vec(2,Bool()))
+  val divide_32_outValidAhead2Cycle = Wire(Vec(2, Bool()))
   for (i <-0 until 2) {
     val begin_I8 = 64 + 32 + i * 8
     val end_I8 = 64 + 32 + (i + 1) * 8 - 1
@@ -175,6 +181,7 @@ class VectorIdiv extends Module {
     divide_32_rem_result(i) := divide_32.io.div_out_rem
     divide_32_finish(i) := divide_32.io.div_out_valid
     divide_32_d_zero(i) := divide_32.io.d_zero
+    divide_32_outValidAhead2Cycle(i) := divide_32.io.outValidAhead2Cycle
   }
   val divide_32_I8_q = Cat(divide_32_q_result(1)(Index_bound(0),0),divide_32_q_result(0)(Index_bound(0),0))
   val divide_32_I8_rem = Cat(divide_32_rem_result(1)(Index_bound(0),0),divide_32_rem_result(0)(Index_bound(0),0))
@@ -187,6 +194,7 @@ class VectorIdiv extends Module {
   val divide_64_rem_result = Wire(Vec(2,UInt(64.W)))
   val divide_64_finish = Wire(Vec(2,Bool()))
   val divide_64_d_zero = Wire(Vec(2,Bool()))
+  val divide_64_outValidAhead2Cycle = Wire(Vec(2, Bool()))
   for (i <-0 until 2) {
     val begin_I8 = 64 + 32 + 16 + i * 8
     val end_I8 = 64 + 32 + 16 + (i + 1) * 8 - 1
@@ -219,6 +227,7 @@ class VectorIdiv extends Module {
     divide_64_rem_result(i) := divide_64.io.div_out_rem
     divide_64_finish(i) := divide_64.io.div_out_valid
     divide_64_d_zero(i) := divide_64.io.d_zero
+    divide_64_outValidAhead2Cycle(i) := divide_64.io.outValidAhead2Cycle
   }
   val divide_64_I8_q = Cat(divide_64_q_result(1)(Index_bound(0),0),divide_64_q_result(0)(Index_bound(0),0))
   val divide_64_I8_rem = Cat(divide_64_rem_result(1)(Index_bound(0),0),divide_64_rem_result(0)(Index_bound(0),0))
@@ -237,8 +246,11 @@ class VectorIdiv extends Module {
   val div_out_rem_result_reg = RegEnable(div_out_rem_result,stateReg(divide))
   val div_out_d_zero_result = Wire(UInt(16.W))
   val div_out_d_zero_result_reg = RegEnable(div_out_d_zero_result,stateReg(divide))
+  val outValidAhead2Cycle = Wire(Bool())
+  val outValidAhead3Cycle = RegEnable(outValidAhead2Cycle && finish, false.B, stateReg(divide))
 
   finish := divide_8_finish.reduce(_ & _) & divide_16_finish.reduce(_ & _) & divide_32_finish.reduce(_ & _) & divide_64_finish.reduce(_ & _)
+  outValidAhead2Cycle := divide_8_outValidAhead2Cycle.reduce(_ | _) | divide_16_outValidAhead2Cycle.reduce(_ | _) | divide_32_outValidAhead2Cycle.reduce(_ | _) | divide_64_outValidAhead2Cycle.reduce(_ | _)
   div_out_d_zero_result :=
     Mux(sew_hb(0), Cat(divide_64_d_zero.asUInt, divide_32_d_zero.asUInt, divide_16_d_zero.asUInt, divide_8_d_zero.asUInt),
       Mux(sew_hb(1), Cat(0.U(8.W), divide_64_d_zero.asUInt, divide_32_d_zero.asUInt, divide_16_d_zero.asUInt),
@@ -260,6 +272,7 @@ class VectorIdiv extends Module {
   io.div_out_q_v := div_out_q_result_reg
   io.div_out_rem_v := div_out_rem_result_reg
   io.d_zero := div_out_d_zero_result_reg
+  io.outValidAhead3Cycle := outValidAhead3Cycle
 
 
 }

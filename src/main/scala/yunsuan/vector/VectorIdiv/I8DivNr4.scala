@@ -12,6 +12,7 @@ class I8DivNr4(bit_width: Int=8) extends Module {
     val divisor = Input(UInt(bit_width.W))
     val flush = Input(Bool())
     val d_zero = Output(Bool())
+    val outValidAhead2Cycle = Output(Bool())
     //val d_zero_err = Output(Bool())
     //val overflow_err = Output(Bool())
     //
@@ -37,6 +38,7 @@ class I8DivNr4(bit_width: Int=8) extends Module {
   //  val div_out_valid_reg = RegEnable(div_out_valid_v, stateReg(post)|stateReg(idle))
   io.div_ready := stateReg(idle)
   io.div_out_valid := stateReg(output)
+  io.outValidAhead2Cycle := early_finish && stateReg(pre) || iter_finish && stateReg(iter)
   // fsm
   when(io.flush) {
     stateReg := oh_idle

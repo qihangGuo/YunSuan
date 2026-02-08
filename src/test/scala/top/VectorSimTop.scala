@@ -225,6 +225,7 @@ class SimTop() extends VPUTestModule {
     vfd.io.fp_aIsFpCanonicalNAN := false.B
     vfd.io.fp_bIsFpCanonicalNAN := false.B
     vfd.io.finish_ready_i := !vfd_result_valid(i) && busy
+    vfd.io.wakeupSuccess := true.B
     // FIXME: do dual vfd result sync.
     when (vfd.io.finish_valid_o && vfd.io.finish_ready_i) {
       vfd_result_valid(i) := true.B
