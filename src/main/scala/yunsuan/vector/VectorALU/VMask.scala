@@ -38,7 +38,7 @@ class VMask extends Module {
 
   val vsew = vdType(1, 0)
   val vsew_plus1 = Wire(UInt(3.W))
-  vsew_plus1 := Cat(0.U(1.W), ~vsew) + 1.U
+  vsew_plus1 := log2Ceil(vlenb).U - Cat(0.U(1.W), vsew)
   val signed = srcTypeVs2(3, 2) === 1.U
   val widen = vdType(1, 0) === (srcTypeVs2(1, 0) + 1.U)
   val vsew_bytes = 1.U << vsew
@@ -141,7 +141,7 @@ class VMask extends Module {
   // stage 0
   // viota/vid/vcpop
   val vs2m_uop = Cat(vs2m.reverse) >> Mux(vcpop_m, uopIdx << vsew_plus1, uopIdx(5, 1) << vsew_plus1)
-  val vs2m_uop_vid = Mux(vid_v, Fill(16, vid_v), vs2m_uop(15, 0))
+  val vs2m_uop_vid = Mux(vid_v, Fill(vlenb, vid_v), vs2m_uop(vlenb - 1, 0))
   // end stage0
   // stage_1
   val one_sum = vs1_reg_s1(7, 0)
@@ -251,7 +251,7 @@ class VMask extends Module {
 
   //stage 2
   val vsew_plus1_reg = Wire(UInt(3.W))
-  vsew_plus1_reg := Cat(0.U(1.W), ~vsew_reg) + 1.U
+  vsew_plus1_reg := log2Ceil(vlenb).U - Cat(0.U(1.W), vsew_reg)
 
   val vmask_bits = Wire(UInt(VLEN.W))
   vmask_bits := vmask_reg >> (uopIdx_reg(5, 1) << vsew_plus1_reg)

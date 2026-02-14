@@ -39,7 +39,7 @@ class DstMgu(vlen: Int) extends Module {
   private val maskVd = maskVecByte.asUInt
 
   private val maxVdIdx = 8
-  private val meaningfulBitsSeq = Seq(16, 8, 4, 2)
+  private val meaningfulBitsSeq = Seq(numBytes, numBytes / 2, numBytes / 4, numBytes / 8)
   private val allPossibleResBit = Wire(Vec(4, Vec(maxVdIdx, UInt(vlen.W))))
 
   
