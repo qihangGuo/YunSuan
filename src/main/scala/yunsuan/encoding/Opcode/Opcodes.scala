@@ -218,79 +218,82 @@ object Opcodes {
     private val S2F4DV = bb"110"
     private val S2F2DV = bb"111"
 
+    private val useSUB = bb"1"
+    private val noSUB = bb"0"
+
+    private val SGN = bb"1"
+    private val UGN = bb"0"
+
     /**
      * sub opcode of [[ADDER]]
      */
-    private val ADD  = bb"000"
-    private val SUB  = bb"001"
-    private val ADC  = bb"010"
-    private val SBC  = bb"011"
-    private val MINU = bb"100"
-    private val MIN  = bb"101"
-    private val MAXU = bb"110"
-    private val MAX  = bb"111"
+    private val ADD  = noSUB  ## SGN ## bb"00"
+    private val SUB  = useSUB ## SGN ## bb"00"
+    private val ADC  = noSUB  ## UGN ## bb"01"
+    private val SBC  = useSUB ## UGN ## bb"01"
+    private val MINU = useSUB ## UGN ## bb"10"
+    private val MIN  = useSUB ## SGN ## bb"10"
+    private val MAXU = useSUB ## UGN ## bb"11"
+    private val MAX  = useSUB ## SGN ## bb"11"
 
     /**
      * sub opcode of [[CMP]]
      */
-    private val EQ  = bb"000"
-    private val NE  = bb"001"
-    private val LTU = bb"010"
-    private val LT  = bb"011"
-    private val LEU = bb"100"
-    private val LE  = bb"101"
-    private val GTU = bb"110"
-    private val GT  = bb"111"
+    private val EQ  = useSUB ## UGN ## bb"00"
+    private val NE  = useSUB ## SGN ## bb"00"
+    private val LTU = useSUB ## UGN ## bb"01"
+    private val LT  = useSUB ## SGN ## bb"01"
+    private val LEU = useSUB ## UGN ## bb"10"
+    private val LE  = useSUB ## SGN ## bb"10"
+    private val GTU = useSUB ## UGN ## bb"11"
+    private val GT  = useSUB ## SGN ## bb"11"
 
     /**
      * sub opcode of [[LOGIC]]
      */
-    private val ANDN = bb"000"
-    private val AND  = bb"001"
-    private val OR   = bb"010"
-    private val XOR  = bb"011"
-    private val ORN  = bb"100"
-    private val NAND = bb"101"
-    private val NOR  = bb"110"
-    private val XNOR = bb"111"
+    private val ANDN = bb"0000"
+    private val AND  = bb"0001"
+    private val OR   = bb"0010"
+    private val XOR  = bb"0011"
+    private val ORN  = bb"0100"
+    private val NAND = bb"0101"
+    private val NOR  = bb"0110"
+    private val XNOR = bb"0111"
 
     /**
      * sub opcode of [[MOVE]]
      */
-    private val MERGE  = bb"000"
-    private val VMV_NR = bb"001"
-    private val VMV_VS = bb"010"
-    private val ZEXT   = bb"100"
-    private val SEXT   = bb"101"
+    private val ZEXT   = bb"0000"
+    private val SEXT   = bb"0100"
 
     /**
      * sub opcode of [[CADDER]]
      * [[AADDU]] and [[WADDU]] will be distinguashed by [[S2VDV]] or [[S2VDW]]
      */
-    private val AADDU = bb"000"
-    private val AADD  = bb"001"
-    private val ASUBU = bb"010"
-    private val ASUB  = bb"011"
-    private val SADDU = bb"100"
-    private val SADD  = bb"101"
-    private val SSUBU = bb"110"
-    private val SSUB  = bb"111"
-    private val WADDU = bb"000"
-    private val WADD  = bb"001"
-    private val WSUBU = bb"010"
-    private val WSUB  = bb"011"
+    private val AADDU = noSUB  ## UGN ## bb"00"
+    private val AADD  = noSUB  ## SGN ## bb"00"
+    private val ASUBU = useSUB ## UGN ## bb"01"
+    private val ASUB  = useSUB ## SGN ## bb"01"
+    private val SADDU = noSUB  ## UGN ## bb"10"
+    private val SADD  = noSUB  ## SGN ## bb"10"
+    private val SSUBU = useSUB ## UGN ## bb"11"
+    private val SSUB  = useSUB ## SGN ## bb"11"
+    private val WADDU = noSUB  ## UGN ## bb"00"
+    private val WADD  = noSUB  ## SGN ## bb"00"
+    private val WSUBU = useSUB ## UGN ## bb"01"
+    private val WSUB  = useSUB ## SGN ## bb"01"
 
     /**
      * WADD4U:
      *   vd(i) = waddu( vs1(2i) + vs2(2i) ) + waddu( vs1(2i + 1) + vs2(2i + 1) )
      */
-    private val WADD4U = bb"110"
+    private val WADD4U = noSUB ## UGN ## bb"10"
 
     /**
      * WADD4:
      *   vd(i) = wadd( vs1(2i) + vs2(2i) ) + wadd( vs1(2i + 1) + vs2(2i + 1) )
      */
-    private val WADD4  = bb"111"
+    private val WADD4  = noSUB ## SGN ## bb"10"
 
     /**
      * sub opcode of [[BITOP]]
@@ -303,18 +306,18 @@ object Opcodes {
     private val MSIF   = bb"0101"
     private val MSOF   = bb"0110"
     private val IOTA   = bb"0111"
-    private val REV8   = bb"000"
+    private val REV8   = bb"0000"
 
     /**
      * sub opcode of [[SHIFT]] and [[CSHIFT]]
      */
-    private val SLL   = bb"000"
-    private val SRL   = bb"001"
-    private val SRA   = bb"010"
-    private val ROR   = bb"100"
-    private val ROL   = bb"101"
-    private val CLIPU = bb"110"
-    private val CLIP  = bb"111"
+    private val SLL   = bb"0" ## UGN ## bb"00"
+    private val SRL   = bb"0" ## UGN ## bb"01"
+    private val SRA   = bb"0" ## SGN ## bb"01"
+    private val ROR   = bb"0" ## UGN ## bb"10"
+    private val ROL   = bb"0" ## UGN ## bb"11"
+    private val CLIPU = bb"1" ## UGN ## bb"00"
+    private val CLIP  = bb"1" ## SGN ## bb"00"
 
     val vadd_e8   = DvSvlS2vS1(ADD, ADDER, S2VDV, E8)
     val vadd_e16  = DvSvlS2vS1(ADD, ADDER, S2VDV, E16)
@@ -353,10 +356,10 @@ object Opcodes {
     val vmaxu_e16 = DvSvlS2vS1(MAXU, ADDER, S2VDV, E16)
     val vmaxu_e32 = DvSvlS2vS1(MAXU, ADDER, S2VDV, E32)
     val vmaxu_e64 = DvSvlS2vS1(MAXU, ADDER, S2VDV, E64)
-    val vmax_e8   = DvSvlS2vS1(MAX,  ADDER, S2VDV, E8 )
-    val vmax_e16  = DvSvlS2vS1(MAX,  ADDER, S2VDV, E16)
-    val vmax_e32  = DvSvlS2vS1(MAX,  ADDER, S2VDV, E32)
-    val vmax_e64  = DvSvlS2vS1(MAX,  ADDER, S2VDV, E64)
+    val vmax_e8   = DvSvlS2vS1(MAX ,  ADDER, S2VDV, E8 )
+    val vmax_e16  = DvSvlS2vS1(MAX ,  ADDER, S2VDV, E16)
+    val vmax_e32  = DvSvlS2vS1(MAX ,  ADDER, S2VDV, E32)
+    val vmax_e64  = DvSvlS2vS1(MAX ,  ADDER, S2VDV, E64)
 
     val vmseq_e8   = DmSvlS2vS1(EQ , CMP, S2VDM, E8)
     val vmseq_e16  = DmSvlS2vS1(EQ , CMP, S2VDM, E16)
@@ -546,7 +549,7 @@ object Opcodes {
     val vrev8_e32 = DvSvlS2v(REV8, BITOP, S2VDV, E32)
     val vrev8_e64 = DvSvlS2v(REV8, BITOP, S2VDV, E64)
 
-    def getOp(implicit op: UInt): UInt = op(10, 8)
+    def getOp(implicit op: UInt): UInt = op.drop(8)
     def getOpClass(implicit op: UInt): UInt = op(7, 5)
     def getDataType(implicit op: UInt): UInt = op(4, 2)
     def getDataWidth(implicit op: UInt): UInt = op(1, 0)
@@ -603,23 +606,14 @@ object Opcodes {
     def isExt4(implicit op: UInt): Bool = getDataType === S2F4DV
     def isExt8(implicit op: UInt): Bool = getDataType === S2F8DV
 
-    // May be encoded in
-    def isUnsigned(implicit op: UInt): Bool = dataWidthAndTypeIsOneOf(
-      ADDER -> Seq(MINU, MAXU),
-      CADDER -> Seq(WADDU, WADD4U, WSUBU, AADDU, ASUBU, SADDU, SSUBU),
-      CMP -> Seq(LTU, LEU, GTU),
-      MOVE -> Seq(ZEXT),
-      SHIFT -> Seq(SRL),
-      CSHIFT -> Seq(SRL, CLIPU),
-    )
+    def isSigned(implicit op: UInt): Bool = getOp.apply(2)
 
     def isMisc(implicit op: UInt): Bool = isVrev8
 
     def isAddCarry(implicit op: UInt): Bool = getOpClass === ADDER && getOp.isOneOf(ADC, SBC)
     def isShift(implicit op: UInt): Bool = getOpClass.isOneOf(SHIFT, CSHIFT)
 
-    def isAdd(implicit op: UInt): Bool = getOp === ADD
-    def isSub(implicit op: UInt): Bool = getOp === SUB
+    def isSub(implicit op: UInt): Bool = getOp.apply(3)
     def isVmsbc(implicit op: UInt): Bool = getOp === SBC // Todo: check if it is only vmsbc
     def isBitLogic(implicit op: UInt): Bool = getOpClass === LOGIC
     def isLeftShiftLogic(implicit op: UInt): Bool = isShift && getOp.isOneOf(SLL, ROL)
