@@ -106,7 +106,7 @@ abstract class Opcodes {
     }
   }
 
-  private var width: Int = _
+  private var width: Option[Int] = None
 
   private val records: mutable.Set[Type] = collection.mutable.Set.empty
 
@@ -114,10 +114,13 @@ abstract class Opcodes {
 
   def allBitPats: Seq[BitPat] = records.map(_.encode).toSeq
 
-  def getWidth: Int = width
+  def getWidth: Int = width.get
 
-  private def updateWidth(w: Int): Unit = {
-    this.width = w max this.width
+  private def updateWidth(w: Int)(name: String): Unit = {
+    if (this.width.isEmpty)
+      this.width = Option(w)
+    else
+      require(this.width.get == w, s"The width of opcode should be ${this.width.get}, but get ${w} in $name.")
   }
 
   def apply(): UInt = UInt(Opcodes.this.getWidth.W)
@@ -130,7 +133,7 @@ abstract class Opcodes {
     val res = new Type(bitpat)
     res.setName(name.value)
     records.addOne(res)
-    Opcodes.this.updateWidth(bitpat.getWidth)
+    Opcodes.this.updateWidth(bitpat.getWidth)(name.value)
     Opcodes.updateWidth(bitpat.getWidth)
 
     res
@@ -181,7 +184,7 @@ object Opcodes {
     )
 
     for (opcodeCls <- opcodes) {
-      for (opcode <- opcodeCls.all) {
+      for (opcode <- opcodeCls.all.sortBy(_.encode.value)) {
         println(s"${opcode}")
       }
     }
