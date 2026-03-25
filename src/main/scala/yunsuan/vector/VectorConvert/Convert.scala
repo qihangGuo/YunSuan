@@ -9,11 +9,9 @@ class VectorCvtIO(width: Int) extends Bundle {
   val fire = Input(Bool())
   val src = Input(UInt(width.W))
   val opType = Input(UInt(8.W))
-  val sew = Input(UInt(2.W))
   val rm = Input(UInt(3.W))
-  val isFpToVecInst = Input(Bool())
-  val isFround = Input(UInt(2.W))
-  val isFcvtmod = Input(Bool())
+  val input1H = Input(UInt(4.W))
+  val output1H = Input(UInt(4.W))
 
   val result = Output(UInt(width.W))
   val fflags = Output(UInt(20.W))
@@ -22,52 +20,8 @@ class VectorCvtIO(width: Int) extends Bundle {
 class VectorCvt(xlen :Int) extends Module{
 
   val io = IO(new VectorCvtIO(xlen))
-  val (fire, src, opType, sew, rm, isFpToVecInst, isFround, isFcvtmod) = (io.fire, io.src, io.opType, io.sew, io.rm, io.isFpToVecInst, io.isFround, io.isFcvtmod)
-  val widen = opType(4, 3) // 0->single 1->widen 2->norrow => width of result
+  val (fire, src, opType, rm, input1H, output1H) = (io.fire, io.src, io.opType, io.rm, io.input1H, io.output1H)
 
-  // input width 8， 16， 32， 64
-  val input1H = Wire(UInt(4.W))
-  input1H := chisel3.util.experimental.decode.decoder(
-    widen ## sew,
-    TruthTable(
-      Seq(
-        BitPat("b00_01") -> BitPat("b0010"), // 16
-        BitPat("b00_10") -> BitPat("b0100"), // 32
-        BitPat("b00_11") -> BitPat("b1000"), // 64
-
-        BitPat("b01_00") -> BitPat("b0001"), // 8
-        BitPat("b01_01") -> BitPat("b0010"), // 16
-        BitPat("b01_10") -> BitPat("b0100"), // 32
-
-        BitPat("b10_00") -> BitPat("b0010"), // 16
-        BitPat("b10_01") -> BitPat("b0100"), // 32
-        BitPat("b10_10") -> BitPat("b1000"), // 64
-      ),
-      BitPat("b0000")
-    )
-  )
-
-  // output width 8， 16， 32， 64
-  val output1H = Wire(UInt(4.W))
-  output1H := chisel3.util.experimental.decode.decoder(
-    widen ## sew,
-    TruthTable(
-      Seq(
-        BitPat("b00_01") -> BitPat("b0010"), // 16
-        BitPat("b00_10") -> BitPat("b0100"), // 32
-        BitPat("b00_11") -> BitPat("b1000"), // 64
-
-        BitPat("b01_00") -> BitPat("b0010"), // 16
-        BitPat("b01_01") -> BitPat("b0100"), // 32
-        BitPat("b01_10") -> BitPat("b1000"), // 64
-
-        BitPat("b10_00") -> BitPat("b0001"), // 8
-        BitPat("b10_01") -> BitPat("b0010"), // 16
-        BitPat("b10_10") -> BitPat("b0100"), // 32
-      ),
-      BitPat("b0000")
-    )
-  )
   dontTouch(input1H)
   dontTouch(output1H)
 
@@ -91,10 +45,10 @@ class VectorCvt(xlen :Int) extends Module{
   val in3 = Mux1H(inputWidth1H, Seq(element8(3), element16(3), 0.U, 0.U))
 
 
-  val (result0, fflags0) = VCVT(64)(fire, in0, opType, sew, rm, input1H, output1H, isFpToVecInst, isFround, isFcvtmod)
-  val (result1, fflags1) = VCVT(32)(fire, in1, opType, sew, rm, input1H, output1H, isFpToVecInst, isFround, isFcvtmod)
-  val (result2, fflags2) = VCVT(16)(fire, in2, opType, sew, rm, input1H, output1H, isFpToVecInst, isFround, isFcvtmod)
-  val (result3, fflags3) = VCVT(16)(fire, in3, opType, sew, rm, input1H, output1H, isFpToVecInst, isFround, isFcvtmod)
+  val (result0, fflags0) = VCVT(64)(fire, in0, opType, rm, input1H, output1H)
+  val (result1, fflags1) = VCVT(32)(fire, in1, opType, rm, input1H, output1H)
+  val (result2, fflags2) = VCVT(16)(fire, in2, opType, rm, input1H, output1H)
+  val (result3, fflags3) = VCVT(16)(fire, in3, opType, rm, input1H, output1H)
 
   io.result := Mux1H(outputWidth1H, Seq(
     result3(7,0) ## result2(7,0) ## result1(7,0) ## result0(7,0),

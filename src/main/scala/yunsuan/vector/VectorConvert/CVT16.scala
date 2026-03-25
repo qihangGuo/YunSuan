@@ -17,8 +17,8 @@ class CVT16(width: Int = 16) extends CVT(width){
   // control path
   val fire = io.fire
   val fireReg = GatedValidRegNext(io.fire)
-  val is_sew_8 = io.sew === "b00".U
-  val is_sew_16 = io.sew === "b01".U
+  val is_sew_8 = io.input1H(0)
+  val is_sew_16 = io.input1H(1)
   val is_single = io.opType.tail(3).head(2) === "b00".U
   val is_widen = io.opType.tail(3).head(2) === "b01".U
   val is_narrow = io.opType.tail(3).head(2) === "b10".U
@@ -157,7 +157,7 @@ class CVT16(width: Int = 16) extends CVT(width){
   val exp_of = Wire(Bool())
   val exp_of_reg0 = RegEnable(exp_of, false.B, fire)
   exp_of := is_fp2int && (exp > max_int_exp)
-  
+
   val lpath_shamt = Mux(is_fp2int && is_single, exp - 25.U, 0.U)
   val lpath_sig_shifted = Wire(UInt(16.W))
   val lpath_sig_shifted_reg0 = RegEnable(lpath_sig_shifted, 0.U(16.W), fire)

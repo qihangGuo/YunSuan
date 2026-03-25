@@ -16,8 +16,8 @@ class CVT32(width: Int = 32) extends CVT(width) {
    * int2fp   in(32) in_abs(32)  lzc  adder      | left    RoundingUnit(32)  adder |  -> result & fflags
    * vfr      in(32)             lzc  adder      | Table                           |
    */
-  val (fire, src, sew, opType, rm, iSize1H, oSize1H) = (
-    io.fire, io.src, io.sew, io.opType, io.rm, io.input1H, io.output1H
+  val (fire, src, opType, rm, iSize1H, oSize1H) = (
+    io.fire, io.src, io.opType, io.rm, io.input1H, io.output1H
   )
   val fireS1 = GatedValidRegNext(fire)
   val cvt32ModuleS0 = Module(new CVT32ModuleS0(width))

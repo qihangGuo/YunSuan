@@ -82,79 +82,24 @@ class FpCvtIO(width: Int) extends Bundle {
   val fire = Input(Bool())
   val src = Input(UInt(width.W))
   val opType = Input(UInt(8.W))
-  val sew = Input(UInt(2.W))
   val rm = Input(UInt(3.W))
-  val isFpToVecInst = Input(Bool())
-  val isFround = Input(UInt(2.W))
-  val isFcvtmod = Input(Bool())
+  val input1H = Input(UInt(4.W))
+  val output1H = Input(UInt(4.W))
 
   val result = Output(UInt(width.W))
   val fflags = Output(UInt(5.W))
 }
 class FPCVT(xlen :Int, isI2F: Boolean = false) extends Module{
   val io = IO(new FpCvtIO(xlen))
-  val (opType, sew) = (io.opType, io.sew)
-  val widen = opType(4, 3) // 0->single 1->widen 2->norrow => width of result
-  // input width 8， 16， 32， 64
-  val input1H = Wire(UInt(4.W))
-  input1H := chisel3.util.experimental.decode.decoder(
-    widen ## sew,
-    TruthTable(
-      Seq(
-        BitPat("b00_01") -> BitPat("b0010"), // 16
-        BitPat("b00_10") -> BitPat("b0100"), // 32
-        BitPat("b00_11") -> BitPat("b1000"), // 64
+  val opType = io.opType
+  val input1H = io.input1H
+  val output1H = io.output1H
 
-        BitPat("b01_00") -> BitPat("b0001"), // 8
-        BitPat("b01_01") -> BitPat("b0010"), // 16
-        BitPat("b01_10") -> BitPat("b0100"), // 32
-
-        BitPat("b10_00") -> BitPat("b0010"), // 16
-        BitPat("b10_01") -> BitPat("b0100"), // 32
-        BitPat("b10_10") -> BitPat("b1000"), // 64
-
-        BitPat("b11_01") -> BitPat("b0010"), // f16->f64/i64/ui64
-        BitPat("b11_11") -> BitPat("b1000"), // f64->f16
-      ),
-      BitPat("b0000")
-    )
-  )
-  // output width 8， 16， 32， 64
-  val output1H = Wire(UInt(4.W))
-  output1H := chisel3.util.experimental.decode.decoder(
-    widen ## sew,
-    TruthTable(
-      Seq(
-        BitPat("b00_01") -> BitPat("b0010"), // 16
-        BitPat("b00_10") -> BitPat("b0100"), // 32
-        BitPat("b00_11") -> BitPat("b1000"), // 64
-
-        BitPat("b01_00") -> BitPat("b0010"), // 16
-        BitPat("b01_01") -> BitPat("b0100"), // 32
-        BitPat("b01_10") -> BitPat("b1000"), // 64
-
-        BitPat("b10_00") -> BitPat("b0001"), // 8
-        BitPat("b10_01") -> BitPat("b0010"), // 16
-        BitPat("b10_10") -> BitPat("b0100"), // 32
-
-        BitPat("b11_11") -> BitPat("b0010"), // f64->f16
-        BitPat("b11_01") -> BitPat("b1000"), // f16->f64/i64/ui64
-      ),
-      BitPat("b0000")
-    )
-  )
-  dontTouch(input1H)
-  dontTouch(output1H)
   val fcvt = Module(new CVT64(xlen, isVectorCvt=false, isI2F))
-  fcvt.io.sew := io.sew
   fcvt.io.fire := io.fire
   fcvt.io.src := io.src
-  fcvt.io.rm := io.rm
   fcvt.io.opType := io.opType
   fcvt.io.rm := io.rm
-  fcvt.io.isFpToVecInst := io.isFpToVecInst
-  fcvt.io.isFround := io.isFround
-  fcvt.io.isFcvtmod := io.isFcvtmod
   fcvt.io.input1H := input1H
   fcvt.io.output1H := output1H
 
