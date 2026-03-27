@@ -36,14 +36,14 @@ object VPUTestFuType { // only use in test, difftest with xs
   def vfd = "b0000_0010".U(8.W)
   def via = "b0000_0011".U(8.W)
   def vperm = "b0000_0100".U(8.W)
-  def viaf = "b0000_0101".U(8.W)
   def vid = "b0000_0110".U(8.W)
   def vcvt= "b0000_0111".U(8.W)
-  def fcvtf2x= "b0000_1000".U(8.W)
-  def fcvti2f= "b0000_1001".U(8.W)
-  def vimac = "b0000_1010".U(8.W) // not used
   def imul = "b0000_1011".U(8.W)
   def fcmp = "b0000_1100".U(8.W)
+=======
+  def fcmp = "b0000_1011".U(8.W)
+  def imul = "b0000_1100".U(8.W)
+>>>>>>> efe018d (feat(FCMP): support maximum/minimum and sign-injection instructions)
 
   def unknown(typ: UInt) = {
     (typ > 12.U)
@@ -123,8 +123,6 @@ class SimTop() extends VPUTestModule {
       VPUTestFuType.fcvtf2x -> VCVT_latency.U,
       VPUTestFuType.fcvti2f -> VCVT_latency.U,
       VPUTestFuType.vimac -> VIMAC_latency.U,
-      VPUTestFuType.imul -> IMUL_latency.U
-      VPUTestFuType.fcmp -> FCMP_latency.U
       VPUTestFuType.imul -> IMUL_latency.U,
       VPUTestFuType.fcmp -> FCMP_latency.U
     )) // fuType --> latency, spec case for div
