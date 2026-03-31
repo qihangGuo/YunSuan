@@ -6,6 +6,7 @@ import yunsuan.util._
 import yunsuan.vector.VectorConvert.utils._
 import yunsuan.vector.VectorConvert.util._
 import yunsuan.vector.VectorConvert.RoundingModle._
+import yunsuan.encoding.Opcode.Opcodes.FCvtOpcode
 
 
 class CVT32(width: Int = 32) extends CVT(width) {
@@ -109,13 +110,10 @@ class CVT32ModuleS0(width: Int = 32) extends Module {
   val s0Out = io.s0Out
   val (src, opType, rm, inSew1H, outSew1H) = (s0In.src, s0In.opType, s0In.rm, s0In.inSew1H, s0In.outSew1H)
 
-  val isWiden = !opType(4) && opType(3)
-  val isNarrow = opType(4) && !opType(3)
-  val inIsFp = opType(7)
-  val outIsFp = opType(6)
-  val isEstimate7 = opType(5)
-  val isRec = opType(5) && opType(0)
-  val hasSignInt = opType(0)
+  val outIsFp = FCvtOpcode.outIsFp(opType)
+  val isEstimate7 = FCvtOpcode.isEstimate7(opType)
+  val isRec = FCvtOpcode.isRec(opType)
+  val hasSignInt = FCvtOpcode.isSignInt(opType)
   val float1HSrc = inSew1H.head(3).tail(1) // exclude f8, f64
   val float1HOut = outSew1H.head(3).tail(1) // exclude f8, f64
 
@@ -139,7 +137,10 @@ class CVT32ModuleS0(width: Int = 32) extends Module {
   val isSubnormalRec2 = isSubnormalSrc && !fracSrc.head(2).orR
   val trunSticky = fracSrc.tail(f16.fracWidth).orR
 
-  val (isFpWiden, isFpNarrow, isFp2Int, isInt2Fp) = (inIsFp && outIsFp && isWiden, inIsFp && outIsFp && isNarrow, !outIsFp, !inIsFp)
+  val isFpWiden  = FCvtOpcode.isFpWiden(opType)
+  val isFpNarrow = FCvtOpcode.isFpNarrow(opType)
+  val isFp2Int   = FCvtOpcode.isF2I(opType)
+  val isInt2Fp   = FCvtOpcode.isI2F(opType)
 
   // exp
   val widthExpAdder = 10
