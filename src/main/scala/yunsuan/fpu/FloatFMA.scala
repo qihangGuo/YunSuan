@@ -1,7 +1,7 @@
 package yunsuan.fpu
 import chisel3._
 import chisel3.util._
-import yunsuan.FmaOpCode
+import yunsuan.encoding.Opcode.Opcodes.FMacOpcode
 import yunsuan.util.GatedValidRegNext
 import yunsuan.vector._
 
@@ -16,7 +16,7 @@ class FloatFMA() extends Module{
     val fp_a, fp_b, fp_c     = Input (UInt(floatWidth.W))  // fp_a->VS2,fp_b->VS1,fp_c->VD
     val round_mode           = Input (UInt(3.W))
     val fp_format            = Input (UInt(2.W)) // result format b01->fp16,b10->fp32,b11->fp64
-    val op_code              = Input (UInt(4.W))
+    val op_code              = Input (UInt(9.W))
     val fp_result            = Output(UInt(floatWidth.W))
     val fflags               = Output(UInt(5.W))
     val fp_aIsFpCanonicalNAN = Input(Bool())
@@ -48,11 +48,11 @@ class FloatFMA() extends Module{
   val fire = io.fire
   val fire_reg0 = GatedValidRegNext(fire)
   val fire_reg1 = GatedValidRegNext(fire_reg0)
-  val is_fmul   = io.op_code === FmaOpCode.fmul
-  val is_fmacc  = io.op_code === FmaOpCode.fmacc
-  val is_fnmacc = io.op_code === FmaOpCode.fnmacc
-  val is_fmsac  = io.op_code === FmaOpCode.fmsac
-  val is_fnmsac = io.op_code === FmaOpCode.fnmsac
+  val is_fmul   = FMacOpcode.isFmul(io.op_code)
+  val is_fmacc  = FMacOpcode.isFmadd(io.op_code)
+  val is_fnmacc = FMacOpcode.isFnmadd(io.op_code)
+  val is_fmsac  = FMacOpcode.isFmsub(io.op_code)
+  val is_fnmsac = FMacOpcode.isFnmsub(io.op_code)
   val is_fp64                 = io.fp_format === 3.U(2.W)
   val is_fp64_reg0            = RegEnable(is_fp64, fire)
   val is_fp64_reg1            = RegEnable(is_fp64_reg0, fire_reg0)
@@ -689,7 +689,7 @@ class FloatFMA() extends Module{
   val fp_c_is_snan_f64 =  !io.fp_cIsFpCanonicalNAN & Ec_f64.andR & !fp_c_significand_f64.tail(1).head(1) & fp_c_significand_f64.tail(2).orR
   val fp_c_is_snan_f32 =  !io.fp_cIsFpCanonicalNAN & Ec_f32.andR & !fp_c_significand_f32.tail(1).head(1) & fp_c_significand_f32.tail(2).orR
   val fp_c_is_snan_f16 =  !io.fp_cIsFpCanonicalNAN & Ec_f16.andR & !fp_c_significand_f16.tail(1).head(1) & fp_c_significand_f16.tail(2).orR
-  
+
   val has_snan_f64 = fp_a_is_snan_f64 | fp_b_is_snan_f64 | fp_c_is_snan_f64
   val has_snan_f32 = fp_a_is_snan_f32 | fp_b_is_snan_f32 | fp_c_is_snan_f32
   val has_snan_f16 = fp_a_is_snan_f16 | fp_b_is_snan_f16 | fp_c_is_snan_f16
