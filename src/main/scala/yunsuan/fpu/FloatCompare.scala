@@ -1,7 +1,7 @@
 package yunsuan.fpu
 import chisel3._
 import chisel3.util._
-import yunsuan.{FcmpOpCode, VectorElementFormat}
+import yunsuan.VectorElementFormat
 import yunsuan.encoding.Opcode.Opcodes.FMiscOpcode
 
 class FloatCompare() extends Module {

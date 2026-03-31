@@ -91,7 +91,6 @@ class FpCvtIO(width: Int) extends Bundle {
 }
 class FPCVT(xlen :Int, isI2F: Boolean = false) extends Module{
   val io = IO(new FpCvtIO(xlen))
-  val opType = io.opType
   val inSew1H = io.inSew1H
   val outSew1H = io.outSew1H
 
