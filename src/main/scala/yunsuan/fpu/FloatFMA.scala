@@ -49,10 +49,10 @@ class FloatFMA() extends Module{
   val fire_reg0 = GatedValidRegNext(fire)
   val fire_reg1 = GatedValidRegNext(fire_reg0)
   val is_fmul   = FMacOpcode.isFmul(io.op_code)
-  val is_fmacc  = FMacOpcode.isFmadd(io.op_code)
-  val is_fnmacc = FMacOpcode.isFnmadd(io.op_code)
-  val is_fmsac  = FMacOpcode.isFmsub(io.op_code)
-  val is_fnmsac = FMacOpcode.isFnmsub(io.op_code)
+  val is_fmadd  = FMacOpcode.isFmadd(io.op_code)
+  val is_fnmadd = FMacOpcode.isFnmadd(io.op_code)
+  val is_fmsub  = FMacOpcode.isFmsub(io.op_code)
+  val is_fnmsub = FMacOpcode.isFnmsub(io.op_code)
   val is_fp64                 = io.fp_format === 3.U(2.W)
   val is_fp64_reg0            = RegEnable(is_fp64, fire)
   val is_fp64_reg1            = RegEnable(is_fp64_reg0, fire_reg0)
@@ -78,8 +78,8 @@ class FloatFMA() extends Module{
   def sign_inv(src: UInt,sel:Bool): UInt = {
     Cat(Mux(sel,~src.head(1),src.head(1)),src.tail(1))
   }
-  val fp_a_is_sign_inv = is_fnmacc || is_fnmsac
-  val fp_c_is_sign_inv = is_fnmacc || is_fmsac
+  val fp_a_is_sign_inv = is_fnmadd || is_fnmsub
+  val fp_c_is_sign_inv = is_fnmadd || is_fmsub
   // fp src
   val fp_a_f64              = sign_inv(io.fp_a(63,0),fp_a_is_sign_inv)
   val fp_b_f64              = io.fp_b(63,0)
