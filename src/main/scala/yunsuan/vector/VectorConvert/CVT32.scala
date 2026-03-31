@@ -16,16 +16,16 @@ class CVT32(width: Int = 32) extends CVT(width) {
    * int2fp   in(32) in_abs(32)  lzc  adder      | left    RoundingUnit(32)  adder |  -> result & fflags
    * vfr      in(32)             lzc  adder      | Table                           |
    */
-  val (fire, src, opType, rm, iSize1H, oSize1H) = (
-    io.fire, io.src, io.opType, io.rm, io.input1H, io.output1H
+  val (fire, src, opType, rm, inSew1H, outSew1H) = (
+    io.fire, io.src, io.opType, io.rm, io.inSew1H, io.outSew1H
   )
   val fireS1 = GatedValidRegNext(fire)
   val cvt32ModuleS0 = Module(new CVT32ModuleS0(width))
   cvt32ModuleS0.io.s0In.src := src
   cvt32ModuleS0.io.s0In.opType := opType
   cvt32ModuleS0.io.s0In.rm := rm
-  cvt32ModuleS0.io.s0In.iSize1H := iSize1H
-  cvt32ModuleS0.io.s0In.oSize1H := oSize1H
+  cvt32ModuleS0.io.s0In.inSew1H := inSew1H
+  cvt32ModuleS0.io.s0In.outSew1H := outSew1H
   val cvt32ModuleS1 = Module(new CVT32ModuleS1(width))
   cvt32Bundles.CommonConnect(cvt32ModuleS1.io.s1In, cvt32ModuleS0.io.s0Out, fire)
   val cvt32ModuleS2 = Module(new CVT32ModuleS2(width))
@@ -56,8 +56,8 @@ class Special extends Bundle {
 class CVT32BundleInputS0(width: Int) extends Bundle {
   val src = UInt(width.W)
   val opType = UInt(8.W)
-  val iSize1H = UInt(4.W)
-  val oSize1H = UInt(4.W)
+  val inSew1H = UInt(4.W)
+  val outSew1H = UInt(4.W)
   val rm = UInt(3.W)
 }
 
@@ -75,7 +75,7 @@ class CVT32BundleOutputS0(width: Int) extends Bundle {
   val isInt2Fp = Bool()
   val isEstimate7 = Bool()
   val isRec = Bool()
-  val oSize1H = UInt(4.W)
+  val outSew1H = UInt(4.W)
   val signSrc = Bool()
   val rm = UInt(3.W)
   val hasSignInt = Bool()
@@ -107,7 +107,7 @@ class CVT32ModuleS0(width: Int = 32) extends Module {
   val io = IO(new CVT32BundleS0(width))
   val s0In = io.s0In
   val s0Out = io.s0Out
-  val (src, opType, rm, iSize1H, oSize1H) = (s0In.src, s0In.opType, s0In.rm, s0In.iSize1H, s0In.oSize1H)
+  val (src, opType, rm, inSew1H, outSew1H) = (s0In.src, s0In.opType, s0In.rm, s0In.inSew1H, s0In.outSew1H)
 
   val isWiden = !opType(4) && opType(3)
   val isNarrow = opType(4) && !opType(3)
@@ -116,8 +116,8 @@ class CVT32ModuleS0(width: Int = 32) extends Module {
   val isEstimate7 = opType(5)
   val isRec = opType(5) && opType(0)
   val hasSignInt = opType(0)
-  val float1HSrc = iSize1H.head(3).tail(1) // exclude f8, f64
-  val float1HOut = oSize1H.head(3).tail(1) // exclude f8, f64
+  val float1HSrc = inSew1H.head(3).tail(1) // exclude f8, f64
+  val float1HOut = outSew1H.head(3).tail(1) // exclude f8, f64
 
   val srcMap = (0 to 2).map(i => src((1 << i) * 8 - 1, 0))
   val floatMap = srcMap.zipWithIndex.map{ case (float ,i) => float32Extend(float, i)}.drop(1)
@@ -199,14 +199,14 @@ class CVT32ModuleS0(width: Int = 32) extends Module {
   s0Out.isFpNarrow := isFpNarrow
   s0Out.isFp2Int := isFp2Int
   s0Out.isInt2Fp := isInt2Fp
-  s0Out.oSize1H := oSize1H
+  s0Out.outSew1H := outSew1H
   s0Out.signSrc := fpSignSrc
   s0Out.rm := rm
   s0Out.hasSignInt := hasSignInt
   s0Out.trunSticky := trunSticky
 
   // int2fp
-  val int1HSrc = iSize1H.tail(1)
+  val int1HSrc = inSew1H.tail(1)
   val intMap = srcMap.map(int => int32Extend(int, hasSignInt && int.head(1).asBool))
   val intIn = Mux1H(int1HSrc, intMap)
   val intSignSrc = intIn.head(1).asBool
@@ -300,7 +300,7 @@ class CVT32ModuleS1(width: Int = 32) extends Module {
   val isInt2Fp = s1In.isInt2Fp
   val isEstimate7 = s1In.isEstimate7
   val isRec = s1In.isRec
-  val oSize1H = s1In.oSize1H
+  val outSew1H = s1In.outSew1H
   val shiftLeft = s1In.shiftLeft
   val fracSrcLeft = s1In.fracSrcLeft
   val signSrc = s1In.signSrc
@@ -330,7 +330,7 @@ class CVT32ModuleS1(width: Int = 32) extends Module {
 
   val intParamMap = (0 to 2).map(i => (1 << i) * 8)
 
-  val float1HOut = oSize1H.head(3).tail(1)
+  val float1HOut = outSew1H.head(3).tail(1)
 
   val fracNormaled = Wire(UInt(width.W))
   fracNormaled := Mux(isSubnormal, shiftLeft, fracSrcLeft)
@@ -372,7 +372,7 @@ class CVT32ModuleS1(width: Int = 32) extends Module {
 
   // for fp2int
   // 6bit => u32, i32, u16, i16, u8, i8
-  val int1HOut = oSize1H.tail(1)
+  val int1HOut = outSew1H.tail(1)
   val hasSignInt1HOut = int1HOut.asBools.map(oh => Seq(oh && !hasSignInt, oh && hasSignInt)).flatten
   val isOnesRounderInputMapFp2Int =
     intParamMap.map(intType => Seq(intType, intType - 1)).flatten.map(intType => rounderInput.tail(32 - intType).andR)

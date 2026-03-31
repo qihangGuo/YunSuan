@@ -8,8 +8,8 @@ class CVTIO(width: Int) extends Bundle {
   val src = Input(UInt(width.W))
   val opType = Input(UInt(9.W))
   val rm = Input(UInt(3.W))
-  val input1H = Input(UInt(4.W))
-  val output1H = Input(UInt(4.W))
+  val inSew1H = Input(UInt(4.W))
+  val outSew1H = Input(UInt(4.W))
   val result = Output(UInt(width.W))
   val fflags = Output(UInt(5.W))
 }
@@ -34,16 +34,16 @@ object VCVT {
              input:   UInt,
              opType:  UInt,
              rm:      UInt,
-             input1H:      UInt,
-             output1H:      UInt
+             inSew1H:      UInt,
+             outSew1H:      UInt
            ): (UInt, UInt) = {
     val vcvtWraper = Module(new VCVT(width))
     vcvtWraper.io.fire := fire
     vcvtWraper.io.src := input
     vcvtWraper.io.opType := opType
     vcvtWraper.io.rm := rm
-    vcvtWraper.io.input1H := input1H
-    vcvtWraper.io.output1H := output1H
+    vcvtWraper.io.inSew1H := inSew1H
+    vcvtWraper.io.outSew1H := outSew1H
     (vcvtWraper.io.result, vcvtWraper.io.fflags)
   }
 }

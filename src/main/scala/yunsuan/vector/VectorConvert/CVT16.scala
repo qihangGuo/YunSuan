@@ -17,8 +17,8 @@ class CVT16(width: Int = 16) extends CVT(width){
   // control path
   val fire = io.fire
   val fireReg = GatedValidRegNext(io.fire)
-  val is_sew_8 = io.input1H(0)
-  val is_sew_16 = io.input1H(1)
+  val is_sew_8 = io.inSew1H(0)
+  val is_sew_16 = io.inSew1H(1)
   val is_single = io.opType.tail(3).head(2) === "b00".U
   val is_widen = io.opType.tail(3).head(2) === "b01".U
   val is_narrow = io.opType.tail(3).head(2) === "b10".U

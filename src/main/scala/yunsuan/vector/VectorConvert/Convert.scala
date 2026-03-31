@@ -10,8 +10,8 @@ class VectorCvtIO(width: Int) extends Bundle {
   val src = Input(UInt(width.W))
   val opType = Input(UInt(8.W))
   val rm = Input(UInt(3.W))
-  val input1H = Input(UInt(4.W))
-  val output1H = Input(UInt(4.W))
+  val inSew1H = Input(UInt(4.W))
+  val outSew1H = Input(UInt(4.W))
 
   val result = Output(UInt(width.W))
   val fflags = Output(UInt(20.W))
@@ -20,14 +20,12 @@ class VectorCvtIO(width: Int) extends Bundle {
 class VectorCvt(xlen :Int) extends Module{
 
   val io = IO(new VectorCvtIO(xlen))
-  val (fire, src, opType, rm, input1H, output1H) = (io.fire, io.src, io.opType, io.rm, io.input1H, io.output1H)
+  val (fire, src, opType, rm, inSew1H, outSew1H) = (io.fire, io.src, io.opType, io.rm, io.inSew1H, io.outSew1H)
 
-  dontTouch(input1H)
-  dontTouch(output1H)
+  dontTouch(inSew1H)
+  dontTouch(outSew1H)
 
-  val inputWidth1H = input1H
-  val outputWidth1H = RegEnable(RegEnable(output1H, fire), GatedValidRegNext(fire))
-
+  val outSew1HDelay2 = RegEnable(RegEnable(outSew1H, fire), GatedValidRegNext(fire))
 
   val element8 = Wire(Vec(8,UInt(8.W)))
   val element16 = Wire(Vec(4,UInt(16.W)))
@@ -40,24 +38,24 @@ class VectorCvt(xlen :Int) extends Module{
   element64 := src.asTypeOf(element64)
 
   val in0 = element64(0)
-  val in1 = Mux1H(inputWidth1H, Seq(element8(1), element16(1), element32(1), 0.U))// input 0=> result 0 while norrow eg. 64b->32b
-  val in2 = Mux1H(inputWidth1H, Seq(element8(2), element16(2), 0.U, 0.U))
-  val in3 = Mux1H(inputWidth1H, Seq(element8(3), element16(3), 0.U, 0.U))
+  val in1 = Mux1H(inSew1H, Seq(element8(1), element16(1), element32(1), 0.U))// input 0=> result 0 while norrow eg. 64b->32b
+  val in2 = Mux1H(inSew1H, Seq(element8(2), element16(2), 0.U, 0.U))
+  val in3 = Mux1H(inSew1H, Seq(element8(3), element16(3), 0.U, 0.U))
 
 
-  val (result0, fflags0) = VCVT(64)(fire, in0, opType, rm, input1H, output1H)
-  val (result1, fflags1) = VCVT(32)(fire, in1, opType, rm, input1H, output1H)
-  val (result2, fflags2) = VCVT(16)(fire, in2, opType, rm, input1H, output1H)
-  val (result3, fflags3) = VCVT(16)(fire, in3, opType, rm, input1H, output1H)
+  val (result0, fflags0) = VCVT(64)(fire, in0, opType, rm, inSew1H, outSew1H)
+  val (result1, fflags1) = VCVT(32)(fire, in1, opType, rm, inSew1H, outSew1H)
+  val (result2, fflags2) = VCVT(16)(fire, in2, opType, rm, inSew1H, outSew1H)
+  val (result3, fflags3) = VCVT(16)(fire, in3, opType, rm, inSew1H, outSew1H)
 
-  io.result := Mux1H(outputWidth1H, Seq(
+  io.result := Mux1H(outSew1HDelay2, Seq(
     result3(7,0) ## result2(7,0) ## result1(7,0) ## result0(7,0),
     result3(15,0) ## result2(15,0) ## result1(15,0) ## result0(15,0),
     result1(31,0) ## result0(31,0),
     result0
   ))
 
-  io.fflags := Mux1H(outputWidth1H, Seq(
+  io.fflags := Mux1H(outSew1HDelay2, Seq(
     fflags3 ## fflags2 ## fflags1 ## fflags0,
     fflags3 ## fflags2 ## fflags1 ## fflags0,
     fflags1 ## fflags0,

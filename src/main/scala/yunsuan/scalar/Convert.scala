@@ -83,8 +83,8 @@ class FpCvtIO(width: Int) extends Bundle {
   val src = Input(UInt(width.W))
   val opType = Input(UInt(9.W))
   val rm = Input(UInt(3.W))
-  val input1H = Input(UInt(4.W))
-  val output1H = Input(UInt(4.W))
+  val inSew1H = Input(UInt(4.W))
+  val outSew1H = Input(UInt(4.W))
 
   val result = Output(UInt(width.W))
   val fflags = Output(UInt(5.W))
@@ -92,16 +92,16 @@ class FpCvtIO(width: Int) extends Bundle {
 class FPCVT(xlen :Int, isI2F: Boolean = false) extends Module{
   val io = IO(new FpCvtIO(xlen))
   val opType = io.opType
-  val input1H = io.input1H
-  val output1H = io.output1H
+  val inSew1H = io.inSew1H
+  val outSew1H = io.outSew1H
 
   val fcvt = Module(new CVT64(xlen, isVectorCvt=false, isI2F))
   fcvt.io.fire := io.fire
   fcvt.io.src := io.src
   fcvt.io.opType := io.opType
   fcvt.io.rm := io.rm
-  fcvt.io.input1H := input1H
-  fcvt.io.output1H := output1H
+  fcvt.io.inSew1H := inSew1H
+  fcvt.io.outSew1H := outSew1H
 
   io.fflags := fcvt.io.fflags
   io.result := fcvt.io.result

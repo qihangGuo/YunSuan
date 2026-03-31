@@ -9,8 +9,8 @@ import yunsuan.util._
 import yunsuan.encoding.Opcode.Opcodes.FCvtOpcode
 
 class CVT64(width: Int = 64, isVectorCvt: Boolean, isI2F: Boolean = false) extends CVT(width){
-  val (fire, src, opType, rm, input1H, output1H) =
-    (io.fire, io.src, io.opType, io.rm, io.input1H, io.output1H)
+  val (fire, src, opType, rm, inSew1H, outSew1H) =
+    (io.fire, io.src, io.opType, io.rm, io.inSew1H, io.outSew1H)
   val fireReg = GatedValidRegNext(fire)
 
   val inIsFpNext       = FCvtOpcode.inIsFp(opType)
@@ -38,14 +38,14 @@ class CVT64(width: Int = 64, isVectorCvt: Boolean, isI2F: Boolean = false) exten
   val isFroundReg = RegEnable(isFroundOrFroundnxNext, false.B, fire)
   val isFcvtmodReg = RegEnable(isFcvtmod, false.B, fire)
 
-  val s0_outIsF64 = outIsFpNext && output1H(3)
-  val s0_outIsF32 = outIsFpNext && output1H(2)
-  val s0_outIsF16 = outIsFpNext && output1H(1)
-  val s0_outIsU32 = outIsIntNext && output1H(2) && hasUnSignIntNext
-  val s0_outIsS32 = outIsIntNext && output1H(2) && hasSignIntNext
-  val s0_outIsU64 = outIsIntNext && output1H(3) && hasUnSignIntNext
-  val s0_outIsS64 = outIsIntNext && output1H(3) && hasSignIntNext
-  val s0_fpCanonicalNAN = if (isVectorCvt) false.B else (inIsFpNext & (input1H(1) & !src.head(48).andR | input1H(2) & !src.head(32).andR))
+  val s0_outIsF64 = outIsFpNext && outSew1H(3)
+  val s0_outIsF32 = outIsFpNext && outSew1H(2)
+  val s0_outIsF16 = outIsFpNext && outSew1H(1)
+  val s0_outIsU32 = outIsIntNext && outSew1H(2) && hasUnSignIntNext
+  val s0_outIsS32 = outIsIntNext && outSew1H(2) && hasSignIntNext
+  val s0_outIsU64 = outIsIntNext && outSew1H(3) && hasUnSignIntNext
+  val s0_outIsS64 = outIsIntNext && outSew1H(3) && hasSignIntNext
+  val s0_fpCanonicalNAN = if (isVectorCvt) false.B else (inIsFpNext & (inSew1H(1) & !src.head(48).andR | inSew1H(2) & !src.head(32).andR))
 
   val s1_isInt2Fp = RegEnable(isInt2FpNext, false.B, fire)
   val s1_isEstimate7 = RegEnable(isEstimate7Next, false.B, fire)
@@ -84,8 +84,8 @@ class CVT64(width: Int = 64, isVectorCvt: Boolean, isI2F: Boolean = false) exten
     fpcvt.io.src := src
     fpcvt.io.rm := rm
     fpcvt.io.opType := opType
-    fpcvt.io.input1H := input1H
-    fpcvt.io.output1H := output1H
+    fpcvt.io.inSew1H := inSew1H
+    fpcvt.io.outSew1H := outSew1H
     fpcvt.io.isScalarFpInst := false.B
     fpcvt.io.isFround := isFround
     fpcvt.io.isFcvtmod := isFcvtmod
@@ -95,15 +95,15 @@ class CVT64(width: Int = 64, isVectorCvt: Boolean, isI2F: Boolean = false) exten
     int2fp.io.src := src
     int2fp.io.rm := rm
     int2fp.io.opType := opType
-    int2fp.io.input1H := input1H
-    int2fp.io.output1H := output1H
+    int2fp.io.inSew1H := inSew1H
+    int2fp.io.outSew1H := outSew1H
     val estmate7 = Module(new Estimate7(width))
     estmate7.io.fire := fire
     estmate7.io.src := src
     estmate7.io.rm := rm
     estmate7.io.opType := opType
-    estmate7.io.input1H := input1H
-    estmate7.io.output1H := output1H
+    estmate7.io.inSew1H := inSew1H
+    estmate7.io.outSew1H := outSew1H
     //result
     val result = Mux1H(Seq(
       s2_isInt2Fp -> int2fp.io.result,
@@ -124,8 +124,8 @@ class CVT64(width: Int = 64, isVectorCvt: Boolean, isI2F: Boolean = false) exten
     fpcvt.io.src := src
     fpcvt.io.rm := rm
     fpcvt.io.opType := opType
-    fpcvt.io.input1H := input1H
-    fpcvt.io.output1H := output1H
+    fpcvt.io.inSew1H := inSew1H
+    fpcvt.io.outSew1H := outSew1H
     fpcvt.io.isScalarFpInst := true.B
     fpcvt.io.isFround := isFround
     fpcvt.io.isFcvtmod := isFcvtmod
@@ -139,8 +139,8 @@ class CVT64(width: Int = 64, isVectorCvt: Boolean, isI2F: Boolean = false) exten
     int2fp.io.src := src
     int2fp.io.rm := rm
     int2fp.io.opType := opType
-    int2fp.io.input1H := input1H
-    int2fp.io.output1H := output1H
+    int2fp.io.inSew1H := inSew1H
+    int2fp.io.outSew1H := outSew1H
     val result = int2fp.io.result
     val fflags = int2fp.io.fflags
     io.result := result
@@ -152,8 +152,8 @@ class CVT_IO(width: Int) extends Bundle{
   val src = Input(UInt(width.W))
   val opType = Input(UInt(9.W))
   val rm = Input(UInt(3.W))
-  val input1H = Input(UInt(4.W))
-  val output1H = Input(UInt(4.W))
+  val inSew1H = Input(UInt(4.W))
+  val outSew1H = Input(UInt(4.W))
   val isScalarFpInst = Input(Bool())
   val isFround = Input(UInt(2.W))
   val isFcvtmod = Input(Bool())
@@ -165,8 +165,8 @@ class INTCVT_IO(width: Int) extends Bundle{
   val src = Input(UInt(width.W))
   val opType = Input(UInt(9.W))
   val rm = Input(UInt(3.W))
-  val input1H = Input(UInt(4.W))
-  val output1H = Input(UInt(4.W))
+  val inSew1H = Input(UInt(4.W))
+  val outSew1H = Input(UInt(4.W))
   val result = Output(UInt(width.W))
   val fflags = Output(UInt(5.W))
 }
@@ -175,14 +175,14 @@ class FP_INCVT(width: Int) extends Module {
   val intParamMap = (0 to 3).map(i => (1 << i) * 8)
   val widthExpAdder = 13 // 13bits is enough
   //input
-  val (fire, src, opType, rmNext, input1H, output1H, isScalarFpInst, isFround, isFcvtmod) =
-    (io.fire, io.src, io.opType, io.rm, io.input1H, io.output1H, io.isScalarFpInst, io.isFround, io.isFcvtmod)
+  val (fire, src, opType, rmNext, inSew1H, outSew1H, isScalarFpInst, isFround, isFcvtmod) =
+    (io.fire, io.src, io.opType, io.rm, io.inSew1H, io.outSew1H, io.isScalarFpInst, io.isFround, io.isFcvtmod)
   val fireReg = GatedValidRegNext(fire)
 
   val outIsIntNext     = FCvtOpcode.outIsInt(opType)
   val hasSignIntNext   = FCvtOpcode.isSignInt(opType)
-  val float1HSrcNext = input1H.head(3)//exclude f8
-  val float1HOutNext = output1H.head(3)//exclude f8
+  val float1HSrcNext = inSew1H.head(3)//exclude f8
+  val float1HOutNext = outSew1H.head(3)//exclude f8
 
   val isFroundOrFroundnxNext = isFround.orR
   val isFroundnxNext = isFround(1)
@@ -230,7 +230,7 @@ class FP_INCVT(width: Int) extends Module {
   val isFpCrossHigh = RegEnable(isFpCrossHighNext, false.B, fire)
   val isFpCrossLow = RegEnable(isFpCrossLowNext, false.B, fire)
   val isNaNSrc = RegEnable(isNaNSrcNext, false.B, fire)
-  val s0_fpCanonicalNAN = isScalarFpInst & (input1H(1) & !src.head(48).andR | input1H(2) & !src.head(32).andR)
+  val s0_fpCanonicalNAN = isScalarFpInst & (inSew1H(1) & !src.head(48).andR | inSew1H(2) & !src.head(32).andR)
   val s1_fpCanonicalNAN = RegEnable(s0_fpCanonicalNAN, fire)
 
   val isFroundnxReg = RegEnable(isFroundnxNext, false.B, fire)
@@ -245,11 +245,11 @@ class FP_INCVT(width: Int) extends Module {
   val hasSignInt = RegEnable(hasSignIntNext, false.B, fire)
   val signNonNan = !isNaNSrc && signSrc
 
-  val output1HReg = RegEnable(output1H, 0.U(4.W), fire)
+  val outSew1HReg = RegEnable(outSew1H, 0.U(4.W), fire)
   val float1HOut = Wire(UInt(3.W))
-  float1HOut := output1HReg.head(3)
+  float1HOut := outSew1HReg.head(3)
   val int1HOut = Wire(UInt(4.W))
-  int1HOut := output1HReg
+  int1HOut := outSew1HReg
 
   //output
   val nv, dz, of, uf, nx = Wire(Bool()) //cycle1
@@ -675,15 +675,15 @@ class INT2FP(width: Int) extends Module{
   val io = IO(new INTCVT_IO(width: Int))
   val widthExpAdder = 13 // 13bits is enough
   //input
-  val (fire, src, opType, rmNext, input1H, output1H) =
-    (io.fire, io.src, io.opType, io.rm, io.input1H, io.output1H)
+  val (fire, src, opType, rmNext, inSew1H, outSew1H) =
+    (io.fire, io.src, io.opType, io.rm, io.inSew1H, io.outSew1H)
   val fireReg = GatedValidRegNext(fire)
   val hasSignIntNext = FCvtOpcode.isSignInt(opType)
-  val int1HSrcNext = input1H
-  val float1HOutNext = output1H.head(3)//exclude f8
-  val output1HReg = RegEnable(output1H, 0.U(4.W), fire)
+  val int1HSrcNext = inSew1H
+  val float1HOutNext = outSew1H.head(3)//exclude f8
+  val outSew1HReg = RegEnable(outSew1H, 0.U(4.W), fire)
   val float1HOut = Wire(UInt(3.W))
-  float1HOut := output1HReg.head(3)
+  float1HOut := outSew1HReg.head(3)
   val srcMap = (0 to 3).map(i => src((1 << i) * 8 - 1, 0))
   val intMap = srcMap.map(int => intExtend(int, hasSignIntNext && int.head(1).asBool))
   val input = Mux1H(int1HSrcNext, intMap)
@@ -792,13 +792,13 @@ class Estimate7(width: Int) extends Module{
   val io = IO(new INTCVT_IO(width: Int))
   val widthExpAdder = 13 // 13bits is enough
   //input
-  val (fire, src, opType, rmNext, input1H, output1H) =
-    (io.fire, io.src, io.opType, io.rm, io.input1H, io.output1H)
+  val (fire, src, opType, rmNext, inSew1H, outSew1H) =
+    (io.fire, io.src, io.opType, io.rm, io.inSew1H, io.outSew1H)
   val fireReg = GatedValidRegNext(fire)
-  val int1HSrcNext = input1H
-  val float1HSrcNext = input1H.head(3)//exclude f8
-  val int1HOutNext = output1H
-  val float1HOutNext = output1H.head(3)//exclude f8
+  val int1HSrcNext = inSew1H
+  val float1HSrcNext = inSew1H.head(3)//exclude f8
+  val int1HOutNext = outSew1H
+  val float1HOutNext = outSew1H.head(3)//exclude f8
   val srcMap = (0 to 3).map(i => src((1 << i) * 8 - 1, 0))
   val floatMap = srcMap.zipWithIndex.map{case (float,i) => floatExtend(float, i)}.drop(1)
   val input = Mux1H(float1HSrcNext, floatMap)
@@ -851,9 +851,9 @@ class Estimate7(width: Int) extends Module{
   val isSubnormalRec0 = RegEnable(isSubnormalRec0Next, false.B, fire)
   val isSubnormalRec1 = RegEnable(isSubnormalRec1Next, false.B, fire)
 
-  val output1HReg = RegEnable(output1H, 0.U(4.W), fire)
+  val outSew1HReg = RegEnable(outSew1H, 0.U(4.W), fire)
   val float1HOut = Wire(UInt(3.W))
-  float1HOut := output1HReg.head(3)
+  float1HOut := outSew1HReg.head(3)
   val nv, dz, of, uf, nx = Wire(Bool()) //cycle1
   val fflagsNext = Wire(UInt(5.W))
   val fflags = RegEnable(fflagsNext, 0.U(5.W), fireReg)
