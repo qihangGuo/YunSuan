@@ -8,7 +8,7 @@ import yunsuan.util._
 class VectorCvtIO(width: Int) extends Bundle {
   val fire = Input(Bool())
   val src = Input(UInt(width.W))
-  val opType = Input(UInt(8.W))
+  val opType = Input(UInt(9.W))
   val rm = Input(UInt(3.W))
   val inSew1H = Input(UInt(4.W))
   val outSew1H = Input(UInt(4.W))

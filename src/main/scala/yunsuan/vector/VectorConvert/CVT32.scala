@@ -55,7 +55,7 @@ class Special extends Bundle {
 
 class CVT32BundleInputS0(width: Int) extends Bundle {
   val src = UInt(width.W)
-  val opType = UInt(8.W)
+  val opType = UInt(9.W)
   val inSew1H = UInt(4.W)
   val outSew1H = UInt(4.W)
   val rm = UInt(3.W)
