@@ -4,17 +4,19 @@ import chisel3._
 import chisel3.util._
 import chisel3.util.experimental.decode._
 import yunsuan.util._
+import yunsuan.encoding.Opcode.Opcodes.FCvtOpcode
+import yunsuan.vector.Common._
 
 class VectorCvtIO(width: Int) extends Bundle {
-  val fire = Input(Bool())
-  val src = Input(UInt(width.W))
-  val opType = Input(UInt(9.W))
-  val rm = Input(UInt(3.W))
-  val inSew1H = Input(UInt(4.W))
-  val outSew1H = Input(UInt(4.W))
+  val fire     = Input(Bool())
+  val src      = Input(UInt(width.W))
+  val opType   = Input(FCvtOpcode())
+  val rm       = Input(Frm())
+  val inSew1H  = Input(Sew())
+  val outSew1H = Input(Sew())
 
   val result = Output(UInt(width.W))
-  val fflags = Output(UInt(20.W))
+  val fflags = Output(Vec(4, Fflags()))
 }
 
 class VectorCvt(xlen :Int) extends Module{
@@ -43,10 +45,10 @@ class VectorCvt(xlen :Int) extends Module{
   val in3 = Mux1H(inSew1H, Seq(element8(3), element16(3), 0.U, 0.U))
 
 
-  val (result0, fflags0) = VCVT(64)(fire, in0, opType, rm, inSew1H, outSew1H)
-  val (result1, fflags1) = VCVT(32)(fire, in1, opType, rm, inSew1H, outSew1H)
-  val (result2, fflags2) = VCVT(16)(fire, in2, opType, rm, inSew1H, outSew1H)
-  val (result3, fflags3) = VCVT(16)(fire, in3, opType, rm, inSew1H, outSew1H)
+  val (result0, fflags0) = VCVT(64)(fire, in0, opType, rm, inSew1H, outSew1H, false.B)
+  val (result1, fflags1) = VCVT(32)(fire, in1, opType, rm, inSew1H, outSew1H, false.B)
+  val (result2, fflags2) = VCVT(16)(fire, in2, opType, rm, inSew1H, outSew1H, false.B)
+  val (result3, fflags3) = VCVT(16)(fire, in3, opType, rm, inSew1H, outSew1H, false.B)
 
   io.result := Mux1H(outSew1HDelay2, Seq(
     result3(7,0) ## result2(7,0) ## result1(7,0) ## result0(7,0),
@@ -55,10 +57,14 @@ class VectorCvt(xlen :Int) extends Module{
     result0
   ))
 
-  io.fflags := Mux1H(outSew1HDelay2, Seq(
+  val fflags = Mux1H(outSew1HDelay2, Seq(
     fflags3 ## fflags2 ## fflags1 ## fflags0,
     fflags3 ## fflags2 ## fflags1 ## fflags0,
     fflags1 ## fflags0,
     fflags0
   ))
+
+  for (i <- 0 until 4) {
+    io.fflags(i) := fflags(Fflags.width * (i + 1) - 1, Fflags.width * i)
+  }
 }

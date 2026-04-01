@@ -317,6 +317,8 @@ object Opcodes {
 
     def getSubOpcode(op: UInt): UInt = op(8, 6)
 
+    def getFormat(op: UInt) = op(2, 1)
+
     def useADD(op: UInt): Bool = {
       getOpNum(op) === OP3 ||
         getOpNum(op) === OP2 && (getSubOpcode(op) === FADD || getSubOpcode(op) === FSUB)
@@ -345,6 +347,22 @@ object Opcodes {
 
     def isFnmsub(op: UInt): Bool = {
       getOpNum(op) === OP3 && getSubOpcode(op) === FNMSUB
+    }
+
+    def isFmacc(op: UInt): Bool = {
+      getOpNum(op) === OP3 && getSubOpcode(op) === FMACC
+    }
+
+    def isFnmacc(op: UInt): Bool = {
+      getOpNum(op) === OP3 && getSubOpcode(op) === FNMACC
+    }
+
+    def isFmsac(op: UInt): Bool = {
+      getOpNum(op) === OP3 && getSubOpcode(op) === FMSAC
+    }
+
+    def isFnmsac(op: UInt): Bool = {
+      getOpNum(op) === OP3 && getSubOpcode(op) === FNMSAC
     }
   }
 
@@ -627,7 +645,7 @@ object Opcodes {
     def isFround(implicit op: UInt): Bool    = isF2F && op(4, 3) === rnd
     def isFroundNx(implicit op: UInt): Bool  = isF2F && op(4, 3) === rndnx
     def isFcvtMod(implicit op: UInt): Bool   = isF2I && op(4, 3) === F2SMOD
-    def isEstimate7(implicit op: UInt): Bool = isOther && (op(6, 3) === FREC7 || op(6, 3) === FRSQRT7)
+    def isEstimate7(implicit op: UInt): Bool = isOther && op(6, 3).isOneOf(FREC7, FRSQRT7)
     def isRec(implicit op: UInt): Bool       = isOther && op(6, 3) === FREC7
 
     def inIsFp(implicit op: UInt): Bool      = !op(2)
@@ -637,6 +655,13 @@ object Opcodes {
     def isUnSignInt(implicit op: UInt): Bool = op(3)
 
     def isFmvF2I(implicit op: UInt): Bool    = isOther && op(6, 3) === FMVF2I
+
+    def inIs64(implicit op: UInt): Bool = getInputDataWidth === FP64
+    def inIs32(implicit op: UInt): Bool = getInputDataWidth === FP32
+    def inIs16(implicit op: UInt): Bool = getInputDataWidth === FP16
+    def outIs64(implicit op: UInt): Bool = getOutputDataWidth === FP64
+    def outIs32(implicit op: UInt): Bool = getOutputDataWidth === FP32
+    def outIs16(implicit op: UInt): Bool = getOutputDataWidth === FP16
   }
 
   object FCvtOpcode extends FCvtOpcode
