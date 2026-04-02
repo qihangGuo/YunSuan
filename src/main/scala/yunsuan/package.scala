@@ -438,27 +438,6 @@ package object yunsuan {
     def apply() = UInt(width.W)
   }
 
-  object FaddOpCode {
-    def width = 5
-
-    def dummy    = "b11111".U(width.W)
-    def fadd     = "b00000".U(width.W)
-    def fsub     = "b00001".U(width.W)
-    def feq      = "b01001".U(width.W)
-    def flt      = "b01011".U(width.W)
-    def fle      = "b01100".U(width.W)
-    def fmin     = "b00010".U(width.W)
-    def fmax     = "b00011".U(width.W)
-    def fclass   = "b01111".U(width.W)
-    def fsgnj    = "b00110".U(width.W)
-    def fsgnjx   = "b01000".U(width.W)
-    def fsgnjn   = "b00111".U(width.W)
-    def fminm    = "b11110".U(width.W)
-    def fmaxm    = "b10011".U(width.W)
-    def fleq     = "b11100".U(width.W)
-    def fltq     = "b11011".U(width.W)
-  }
-
   object MULOpType {
     // mul
     // bit encoding: | type (2bit) | isWord(1bit) | opcode(2bit) |
