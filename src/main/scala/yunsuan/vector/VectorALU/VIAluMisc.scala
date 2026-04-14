@@ -3,7 +3,7 @@ package yunsuan.vector.VectorALU
 import chisel3._
 import chisel3.util._
 import yunsuan.encoding.Opcode.FixedPointRoundingMode._
-import yunsuan.encoding.Opcode.VIAluOpcode
+import yunsuan.encoding.Opcode.VialuOpcode
 import yunsuan.vector.{SewOH, UIntSplit}
 import yunsuan.util._
 
@@ -52,7 +52,7 @@ class VIAluMiscToS1(xlen: Int) extends Bundle {
 
 
 class VIAluMiscInput(xlen: Int) extends Bundle {
-  val opcode = new VIAluOpcode
+  val opcode = new VialuOpcode
   val ctrl = new VIAluMiscCtrl
   val data = new VIAluMiscData(xlen)
 }

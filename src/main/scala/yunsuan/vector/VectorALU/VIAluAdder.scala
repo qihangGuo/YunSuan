@@ -3,7 +3,7 @@ package yunsuan.vector.VectorALU
 import chisel3._
 import chisel3.util._
 import yunsuan.encoding.Opcode.FixedPointRoundingMode._
-import yunsuan.encoding.Opcode.VIAluOpcode
+import yunsuan.encoding.Opcode.VialuOpcode
 
 class VIAluAdderCtrl extends Bundle {
   val sel8 = Bool()
@@ -42,7 +42,7 @@ class VIAluAdderToS1(xlen: Int) extends Bundle {
 }
 
 class VIAluAdderInput(xlen: Int) extends Bundle {
-  val opcode = new VIAluOpcode
+  val opcode = new VialuOpcode
   val ctrl = new VIAluAdderCtrl
   val data = new VIAluAdderData(xlen)
 }

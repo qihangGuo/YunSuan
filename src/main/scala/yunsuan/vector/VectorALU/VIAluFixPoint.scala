@@ -2,7 +2,7 @@ package yunsuan.vector.VectorALU
 
 import chisel3._
 import chisel3.util._
-import yunsuan.encoding.Opcode.VIAluOpcode
+import yunsuan.encoding.Opcode.VialuOpcode
 import yunsuan.util.GatedValidRegNext
 
 class VIAluInfo extends Bundle {
@@ -50,7 +50,7 @@ class VIAluData(xlen: Int) extends Bundle {
 
 
 class VIAluFixPointInput(xlen: Int) extends Bundle {
-  val opcode = new VIAluOpcode
+  val opcode = new VialuOpcode
   val info = new VIAluInfo
   val ctrl = new VIAluCtrl
   val data = new VIAluData(xlen)
