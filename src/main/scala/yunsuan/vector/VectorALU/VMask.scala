@@ -146,11 +146,12 @@ class VMask extends Module {
   // stage_1
   val one_sum = vs1_reg_s1(7, 0)
   val one_cnt = Wire(Vec(vlenb + 1, UInt(8.W)))
-  val one_cnt_uop = Wire(Vec(vlenb + 1, UInt(5.W)))
-  val one_cnt_uop_sew8 = Wire(Vec(vlenb + 1, UInt(5.W)))
-  val one_cnt_uop_sew16 = Wire(Vec(vlenb + 1, UInt(5.W)))
-  val one_cnt_uop_sew32 = Wire(Vec(vlenb + 1, UInt(5.W)))
-  val one_cnt_uop_sew64 = Wire(Vec(vlenb + 1, UInt(5.W)))
+  val cntWidth = log2Ceil(vlenb + 1) + 1
+  val one_cnt_uop = Wire(Vec(vlenb + 1, UInt(cntWidth.W)))
+  val one_cnt_uop_sew8 = Wire(Vec(vlenb + 1, UInt(cntWidth.W)))
+  val one_cnt_uop_sew16 = Wire(Vec(vlenb + 1, UInt(cntWidth.W)))
+  val one_cnt_uop_sew32 = Wire(Vec(vlenb + 1, UInt(cntWidth.W)))
+  val one_cnt_uop_sew64 = Wire(Vec(vlenb + 1, UInt(cntWidth.W)))
   val vid_vd = Wire(Vec(vlenb, UInt(8.W)))
   val vid_vd_sew8 = Wire(Vec(vlenb, UInt(8.W)))
   val vid_vd_sew16 = Wire(Vec(vlenb, UInt(8.W)))
