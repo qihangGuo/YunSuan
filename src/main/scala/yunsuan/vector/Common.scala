@@ -201,6 +201,11 @@ object Common {
       this(v.asUInt)
     }
 
+    def toByteVec: Vec[UInt] = {
+      require(width % 8 == 0)
+      this.splitToVec(width / 8, 8)
+    }
+
     def to8bitVec: Vec[UInt] = {
       require(width % 8 == 0)
       this.splitToVec(width / 8, 8)

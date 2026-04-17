@@ -1754,6 +1754,8 @@ object Opcodes {
     protected def getSubOp(implicit op: UInt): UInt = op(4, 2)
     protected def getSubOp(op: BitPat): BitPat = op(4, 2)
 
+    def getElemWidth(implicit op: UInt): UInt = op(1, 0)
+
     def isVS2X(implicit op: UInt): Bool = getSubOp.isOneOf(MV_VS2X)
     def isX2VS(implicit op: UInt): Bool = getSubOp.isOneOf(MV_X2VS)
     def isNR(implicit op: UInt): Bool = getSubOp.isOneOf(MV_NR)

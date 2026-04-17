@@ -595,9 +595,6 @@ object Adder extends VIAlu.Config {
     val avg = WidthData()
     val adder = WidthData()
     val adcCmpMask = new MaskGroup
-
-    val upOverflowUnSign = UInt(maskWidth.W)
-    val downOverflowSign = UInt(maskWidth.W)
   }
 
   class OutMidRes extends VIAlu.Bundle {

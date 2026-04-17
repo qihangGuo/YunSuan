@@ -142,7 +142,7 @@ object VIAlu {
     def toE8Mask(sew1H: UInt) = {
       require(sew1H.getWidth == 4)
       Mux1H(Seq(
-        sew1H(0) -> e8,
+        sew1H(0) -> FillInterleaved(1, e8),
         sew1H(1) -> FillInterleaved(2, e16),
         sew1H(2) -> FillInterleaved(4, e32),
         sew1H(3) -> FillInterleaved(8, e64),
@@ -158,7 +158,7 @@ object VIAlu {
     def toE8Mask(sew1H: UInt) = {
       require(3 <= sew1H.getWidth && sew1H.getWidth <= 4)
       Mux1H(Seq(
-        sew1H(0) -> e8,
+        sew1H(0) -> FillInterleaved(1, e8),
         sew1H(1) -> FillInterleaved(2, e16),
         sew1H(2) -> FillInterleaved(4, e32),
       ))
