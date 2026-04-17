@@ -74,7 +74,7 @@ class VIAlu extends VIAlu.Module {
 
   out.ex1.vd := fixPoint.out.res.vd
   out.ex1.narrowVd := fixPoint.out.res.narrowVd
-  out.ex1.mask := 0.U
+  out.ex1.mask := 0.U.asTypeOf(out.ex1.mask)
   out.ex1.vxsat := fixPoint.out.res.vxsat
   out.ex1.narrowVxsat := fixPoint.out.res.narrowVxsat
 }
@@ -128,7 +128,7 @@ object VIAlu {
   class OutData extends Bundle {
     val vd = UInt(dWidth.W)
     val narrowVd = UInt((dWidth / 2).W)
-    val mask = MaskData()
+    val mask = new MaskGroup
     val vxsat = MaskData()
     val narrowVxsat = NarrowMask()
   }
