@@ -9,9 +9,10 @@ import yunsuan.util._
 import yunsuan.encoding.Opcode.Opcodes.FCvtOpcode
 import yunsuan.vector.Common._
 
-class CVT64(width: Int = 64, isVectorCvt: Boolean, isI2F: Boolean = false) extends CVT(width){
+class CVT64(width: Int = 64, isVectorCvt: Boolean, isI2F: Boolean = false) extends Module{
+  val io = IO(new VCVT.IO(width))
   val (fire, src, opType, rm, inSew1H, outSew1H, isScalarFpInst) =
-    (io.fire, io.src, io.opType, io.rm, io.inSew1H, io.outSew1H, io.isScalarFpInst)
+    (io.in.fire, io.in.data.src, io.in.ctrl.opType, io.in.ctrl.rm, io.in.ctrl.inSew1H, io.in.ctrl.outSew1H, io.in.ctrl.isScalarFpInst)
   val fireReg = GatedValidRegNext(fire)
 
   val inIsFpNext       = FCvtOpcode.inIsFp(opType)
@@ -122,8 +123,20 @@ class CVT64(width: Int = 64, isVectorCvt: Boolean, isI2F: Boolean = false) exten
       s2_isFPsrc -> fpcvt.io.fflags,
       s2_isEstimate7 -> estmate7.io.fflags
     ))
-    io.result := result
-    io.fflags := fflags
+    val resultEx1 = Mux1H(Seq(
+      s1_isInt2Fp -> int2fp.io.resultEx1,
+      s1_isFPsrc -> fpcvt.io.resultEx1,
+      s1_isEstimate7 -> estmate7.io.resultEx1,
+    ))
+    val fflagsEx1 = Mux1H(Seq(
+      s1_isInt2Fp -> int2fp.io.fflagsEx1,
+      s1_isFPsrc -> fpcvt.io.fflagsEx1,
+      s1_isEstimate7 -> estmate7.io.fflagsEx1,
+    ))
+    io.out.ex2.res := result
+    io.out.ex2.fflags := fflags
+    io.out.ex1.res := resultEx1
+    io.out.ex1.fflags := fflagsEx1
   }else if(!isI2F){ // scalar fp2int & fp2fp
     //inst FPTOINT and FPTOFP module
     val fpcvt = Module(new FP_INCVT(width))
@@ -138,8 +151,10 @@ class CVT64(width: Int = 64, isVectorCvt: Boolean, isI2F: Boolean = false) exten
     fpcvt.io.isFcvtmod := isFcvtmod
     val result = fpcvt.io.result
     val fflags = fpcvt.io.fflags
-    io.result := Mux(s2_fpCanonicalNAN, s2_resultForfpCanonicalNAN, result)
-    io.fflags := Mux(s2_fpCanonicalNAN && !s2_outIsFP, "b10000".U, Mux(s2_fpCanonicalNAN && s2_isFround, 0.U, fflags))
+    io.out.ex2.res := Mux(s2_fpCanonicalNAN, s2_resultForfpCanonicalNAN, result)
+    io.out.ex2.fflags := Mux(s2_fpCanonicalNAN && !s2_outIsFP, "b10000".U, Mux(s2_fpCanonicalNAN && s2_isFround, 0.U, fflags))
+    io.out.ex1.res := fpcvt.io.resultEx1
+    io.out.ex1.fflags := fpcvt.io.fflagsEx1
   }else { // scalar int2fp
     val int2fp = Module(new INT2FP(width))
     int2fp.io.fire := fire
@@ -150,8 +165,10 @@ class CVT64(width: Int = 64, isVectorCvt: Boolean, isI2F: Boolean = false) exten
     int2fp.io.outSew1H := outSew1H
     val result = int2fp.io.result
     val fflags = int2fp.io.fflags
-    io.result := result
-    io.fflags := fflags
+    io.out.ex2.res := result
+    io.out.ex2.fflags := fflags
+    io.out.ex1.res := int2fp.io.resultEx1
+    io.out.ex1.fflags := int2fp.io.fflagsEx1
   }
 }
 class CVT_IO(width: Int) extends Bundle{
@@ -164,6 +181,8 @@ class CVT_IO(width: Int) extends Bundle{
   val isScalarFpInst = Input(Bool())
   val isFround  = Input(UInt(2.W))
   val isFcvtmod = Input(Bool())
+  val resultEx1 = Output(UInt(width.W))
+  val fflagsEx1 = Output(Fflags())
   val result    = Output(UInt(width.W))
   val fflags    = Output(Fflags())
 }
@@ -174,6 +193,8 @@ class INTCVT_IO(width: Int) extends Bundle{
   val rm       = Input(Frm())
   val inSew1H  = Input(Sew())
   val outSew1H = Input(Sew())
+  val resultEx1 = Output(UInt(width.W))
+  val fflagsEx1 = Output(Fflags())
   val result   = Output(UInt(width.W))
   val fflags   = Output(Fflags())
 }
@@ -673,6 +694,8 @@ class FP_INCVT(width: Int) extends Module {
     )
   }
   fflagsNext := Cat(nv, dz, of, uf, nx)
+  io.resultEx1 := resultNext
+  io.fflagsEx1 := fflagsNext
   io.result := result
   io.fflags := fflags
 
@@ -788,6 +811,8 @@ class INT2FP(width: Int) extends Module{
   resultNext := Mux1H(float1HOut, int2FpResultMap)
   //output
   fflagsNext := Cat(nv, dz, of, uf, nx)
+  io.resultEx1 := resultNext
+  io.fflagsEx1 := fflagsNext
   io.result := result
   io.fflags := fflags
 }
@@ -940,9 +965,8 @@ class Estimate7(width: Int) extends Module{
   resultNext := Mux(isRec, Mux1H(float1HOut, recResultMap), Mux1H(float1HOut, sqrtResultMap))
 
   fflagsNext := Cat(nv, dz, of, uf, nx)
+  io.resultEx1 := resultNext
+  io.fflagsEx1 := fflagsNext
   io.result := result
   io.fflags := fflags
 }
-
-
-

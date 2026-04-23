@@ -33,8 +33,10 @@ class CVT32(width: Int = 32) extends CVT(width) {
   CommonConnect(cvt32ModuleS1.io.s1In, cvt32ModuleS0.io.s0Out, fire)
   val cvt32ModuleS2 = Module(new CVT32ModuleS2(width))
   CommonConnect(cvt32ModuleS2.io.s2In, cvt32ModuleS1.io.s1Out, fireS1)
-  io.result := cvt32ModuleS2.io.s2Out.result
-  io.fflags := cvt32ModuleS2.io.s2Out.fflags
+  io.out.ex1.res := cvt32ModuleS1.io.s1Out.result
+  io.out.ex1.fflags := cvt32ModuleS1.io.s1Out.fflags
+  io.out.ex2.res := cvt32ModuleS2.io.s2Out.result
+  io.out.ex2.fflags := cvt32ModuleS2.io.s2Out.fflags
 }
 
 class CVT32BundleInputS0(width: Int) extends Bundle {
