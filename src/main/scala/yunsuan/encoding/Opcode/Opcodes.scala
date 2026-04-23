@@ -227,7 +227,7 @@ abstract class Opcodes {
   }
 
   def DsS1a(bp1: BitPat, bp2: BitPat*)(implicit name: SourceName): Type = {
-    Value(bp1, bp2: _*)(name) + Src1Vp + VsWen
+    Value(bp1, bp2: _*)(name) + Src1Gp + VsWen
   }
 
   def DsSvlS2vS1s(subOp: BitPat, opb: BitPat, res: BitPat, dtype: BitPat)(implicit name: SourceName): Type = {
@@ -350,7 +350,6 @@ abstract class Opcodes {
   def FpSTypeInst(bp1: BitPat, bp2: BitPat*)(implicit name: SourceName): Type = {
     Value(bp1, bp2: _*)(name)                 + Src1Gp + Src2Fp
   }
-
 
   override def toString: String = {
     getClass.getSimpleName
