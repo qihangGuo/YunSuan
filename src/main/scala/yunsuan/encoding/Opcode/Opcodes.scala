@@ -1592,6 +1592,13 @@ object Opcodes {
     def isVmaccType(implicit op: UInt): Bool = isVmacc || isVnmsac || isVmadd || isVnmsub
     def isSub(implicit op: UInt): Bool = isVnmsub || isVnmsac
     def overWriteMultiplicand(implicit op: UInt): Bool = isVmadd || isVnmsub
+    def isFixP(implicit op: UInt): Bool = isVsmul
+
+    def isSourceE8(implicit op: UInt): Bool = getSew === E8
+    def isSourceE16(implicit op: UInt): Bool = getSew === E16
+    def isSourceE32(implicit op: UInt): Bool = getSew === E32
+    def isSourceE64(implicit op: UInt): Bool = getSew === E64
+    override def getLat(opcode: Opcode): Int = 2
   }
 
   object VIMacOpcode extends VIMacOpcode
