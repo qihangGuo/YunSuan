@@ -25,6 +25,8 @@ static inline void print_help(const char *file) {
   printf("  -O, --max-operations=NUM   execute at most NUM instructions\n");
   printf("  -b, --log-begin=NUM        display log from NUM th cycle\n");
   printf("  -e, --log-end=NUM          stop display log at NUM th cycle\n");
+  printf("  -t, --futype=NUM           only test this fuType\n");
+  printf("  -p, --fuop=NUM             only test this fuOpType (requires --futype)\n");
   printf("      --dump-wave            dump waveform when log is enabled\n");
   printf("  -h, --help                 print program help info\n");
   printf("\n");
@@ -40,13 +42,15 @@ inline EmuArgs parse_args(int argc, const char *argv[]) {
     { "max-operations",    1, NULL, 'O' },
     { "log-begin",         1, NULL, 'b' },
     { "log-end",           1, NULL, 'e' },
+    { "futype",            1, NULL, 't' },
+    { "fuop",              1, NULL, 'p' },
     { "help",              0, NULL, 'h' },
     { 0,                   0, NULL,  0  }
   };
 
   int o;
   while ( (o = getopt_long(argc, const_cast<char *const*>(argv),
-          "-s:C:O:h:b:e:", long_options, &long_index)) != -1) {
+          "-s:C:O:h:b:e:t:p:", long_options, &long_index)) != -1) {
     switch (o) {
       case 0:
         switch (long_index) {
@@ -65,7 +69,33 @@ inline EmuArgs parse_args(int argc, const char *argv[]) {
       case 'O': args.max_operations = atoll_strict(optarg, "max-operations");  break;
       case 'b': args.log_begin = atoll_strict(optarg, "log-begin");  break;
       case 'e': args.log_end = atoll_strict(optarg, "log-end"); break;
+      case 't': {
+        long long int val = atoll_strict(optarg, "futype");
+        if (val < 0 || val > 255) {
+          printf("[ERROR] --futype=NUM must be in [0,255]\n");
+          exit(EINVAL);
+        }
+        args.pick_fuType = true;
+        args.fuType = static_cast<uint8_t>(val);
+        break;
+      }
+      case 'p': {
+        long long int val = atoll_strict(optarg, "fuop");
+        if (val < 0 || val > 65535) {
+          printf("[ERROR] --fuop=NUM must be in [0,65535]\n");
+          exit(EINVAL);
+        }
+        args.pick_fuOpType = true;
+        args.fuOpType = static_cast<uint16_t>(val);
+        break;
+      }
     }
+  }
+
+  if (args.pick_fuOpType && !args.pick_fuType) {
+    printf("[ERROR] --fuop requires --futype\n");
+    print_help(argv[0]);
+    exit(EINVAL);
   }
 
   Verilated::commandArgs(argc, argv); // Prepare extra args for TLMonitor
@@ -93,6 +123,10 @@ Emulator::Emulator(int argc, const char *argv[]):
 #endif
   
   test_driver.set_default_value(dut_ptr);
+  if (args.pick_fuType || args.pick_fuOpType) {
+    test_driver.set_test_type(args.pick_fuType, args.fuType, args.pick_fuOpType, args.fuOpType);
+    test_driver.gen_next_test_case();
+  }
   reset_ncycles(10);
 }
 
