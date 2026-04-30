@@ -9,8 +9,8 @@ import yunsuan.vector._
 import yunsuan.vector.alu.VAluOpcode._
 
 class VMask extends Module {
-  val VLEN = 128
-  val xLen = 64
+  val VLEN = VIFuParam.VLEN
+  val xLen = VIFuParam.XLEN
   val LaneWidth = 64
   val NLanes = VLEN / 64
   val vlenb = VLEN / 8
@@ -38,13 +38,13 @@ class VMask extends Module {
 
   val vsew = vdType(1, 0)
   val vsew_plus1 = Wire(UInt(3.W))
-  vsew_plus1 := Cat(0.U(1.W), ~vsew) + 1.U
+  vsew_plus1 := log2Ceil(vlenb).U - Cat(0.U(1.W), vsew)
   val signed = srcTypeVs2(3, 2) === 1.U
   val widen = vdType(1, 0) === (srcTypeVs2(1, 0) + 1.U)
   val vsew_bytes = 1.U << vsew
   val vsew_bits = 8.U << vsew
   val ele_cnt = vlenb.U >> vsew
-  val vlRemain = Wire(UInt(8.W))
+  val vlRemain = Wire(UInt(VIFuParam.wVL.W))
   val vlRemainBytes = vlRemain << vsew
   val eewVs1 = SewOH(srcTypeVs1(1, 0))
   val eewVs2 = SewOH(srcTypeVs2(1, 0))
@@ -141,16 +141,17 @@ class VMask extends Module {
   // stage 0
   // viota/vid/vcpop
   val vs2m_uop = Cat(vs2m.reverse) >> Mux(vcpop_m, uopIdx << vsew_plus1, uopIdx(5, 1) << vsew_plus1)
-  val vs2m_uop_vid = Mux(vid_v, Fill(16, vid_v), vs2m_uop(15, 0))
+  val vs2m_uop_vid = Mux(vid_v, Fill(vlenb, vid_v), vs2m_uop(vlenb - 1, 0))
   // end stage0
   // stage_1
   val one_sum = vs1_reg_s1(7, 0)
   val one_cnt = Wire(Vec(vlenb + 1, UInt(8.W)))
-  val one_cnt_uop = Wire(Vec(vlenb + 1, UInt(5.W)))
-  val one_cnt_uop_sew8 = Wire(Vec(vlenb + 1, UInt(5.W)))
-  val one_cnt_uop_sew16 = Wire(Vec(vlenb + 1, UInt(5.W)))
-  val one_cnt_uop_sew32 = Wire(Vec(vlenb + 1, UInt(5.W)))
-  val one_cnt_uop_sew64 = Wire(Vec(vlenb + 1, UInt(5.W)))
+  val cntWidth = log2Ceil(vlenb + 1) + 1
+  val one_cnt_uop = Wire(Vec(vlenb + 1, UInt(cntWidth.W)))
+  val one_cnt_uop_sew8 = Wire(Vec(vlenb + 1, UInt(cntWidth.W)))
+  val one_cnt_uop_sew16 = Wire(Vec(vlenb + 1, UInt(cntWidth.W)))
+  val one_cnt_uop_sew32 = Wire(Vec(vlenb + 1, UInt(cntWidth.W)))
+  val one_cnt_uop_sew64 = Wire(Vec(vlenb + 1, UInt(cntWidth.W)))
   val vid_vd = Wire(Vec(vlenb, UInt(8.W)))
   val vid_vd_sew8 = Wire(Vec(vlenb, UInt(8.W)))
   val vid_vd_sew16 = Wire(Vec(vlenb, UInt(8.W)))
@@ -223,7 +224,7 @@ class VMask extends Module {
   }
   //end stage 1 to stage 2
 
-  val vstartRemain = Wire(UInt(7.W))
+  val vstartRemain = Wire(UInt(log2Ceil(VLEN).W))
   // stage 0
   vstartRemain := Mux(vid_v, Mux(vstart >= (uopIdx(5, 1) << vsew_plus1), (vstart - (uopIdx(5, 1) << vsew_plus1)), 0.U), 0.U)
   val vstartRemain_reg_s1 = RegEnable(vstartRemain, 0.U, fire)
@@ -251,7 +252,7 @@ class VMask extends Module {
 
   //stage 2
   val vsew_plus1_reg = Wire(UInt(3.W))
-  vsew_plus1_reg := Cat(0.U(1.W), ~vsew_reg) + 1.U
+  vsew_plus1_reg := log2Ceil(vlenb).U - Cat(0.U(1.W), vsew_reg)
 
   val vmask_bits = Wire(UInt(VLEN.W))
   vmask_bits := vmask_reg >> (uopIdx_reg(5, 1) << vsew_plus1_reg)

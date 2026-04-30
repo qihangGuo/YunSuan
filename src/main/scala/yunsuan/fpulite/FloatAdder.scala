@@ -4,7 +4,6 @@ import chisel3.util._
 import yunsuan.vector._
 import yunsuan.{VfaddOpCode, VectorElementFormat}
 class FloatAdder() extends Module {
-  val VLEN = 128
   val exponentWidth = 11
   val significandWidth = 53
   val floatWidth = exponentWidth + significandWidth

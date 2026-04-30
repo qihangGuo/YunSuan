@@ -3,7 +3,7 @@ package yunsuan.vector.VectorMove
 import chisel3._
 import chisel3.util._
 import yunsuan.VmoveType
-import yunsuan.vector.{BitsExtend, SewOH}
+import yunsuan.vector.{BitsExtend, SewOH, VIFuParam}
 import yunsuan.vector.alu.VSew._
 
 class VMoveInfo extends Bundle {
@@ -16,7 +16,7 @@ class VectorMoveInputBundle(vlen: Int) extends Bundle {
   val info = new VMoveInfo
   val vs2 = UInt(vlen.W)
   val vs1 = UInt(vlen.W)
-  val mask = UInt(16.W)
+  val mask = UInt((vlen / 8).W)
 }
 
 class VectorMoveOutputBundle(vlen: Int) extends Bundle {
@@ -24,7 +24,7 @@ class VectorMoveOutputBundle(vlen: Int) extends Bundle {
 }
 
 class VectorMove extends Module {
-  private val VLEN = 128
+  private val VLEN = VIFuParam.VLEN
   private val numBytes = VLEN / 8
   val io = IO(new Bundle {
     val in = Flipped(ValidIO(new VectorMoveInputBundle(VLEN)))
