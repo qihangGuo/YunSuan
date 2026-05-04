@@ -942,25 +942,11 @@ object Opcodes {
       def getInputDataWidthRaw(implicit op: BitPat): BitPat = op(6, 5)
       def getCvtType(implicit op: BitPat): BitPat = op(2, 1)
 
-      def isF2F(implicit op: BitPat): Boolean = getCvtType.isOneOf(F2F)
-      def isF2I(implicit op: BitPat): Boolean = getCvtType.isOneOf(F2I)
-      def isI2F(implicit op: BitPat): Boolean = getCvtType.isOneOf(I2F)
       def isOther(implicit op: BitPat): Boolean = getCvtType.isOneOf(OTHER)
 
-      // FCVT chooses the backend by the floating-point side width:
-      // F2I uses input fp width, I2F/OTHER use output fp width,
-      // and F2F follows the wider fp path.
-      def getFloatWidth(implicit op: BitPat): BitPat = {
-        if (isF2I) getInputDataWidthRaw
-        else if (isI2F || isOther) getOutputDataWidth
-        else if (getOutputDataWidth.isOneOf(FP64) || getInputDataWidthRaw.isOneOf(FP64)) FP64
-        else if (getOutputDataWidth.isOneOf(FP32) || getInputDataWidthRaw.isOneOf(FP32)) FP32
-        else FP16
-      }
-
       def getVectorLat(implicit op: BitPat): Int = {
-        require(getFloatWidth.isOneOf(FP16, FP32, FP64))
-        if (getFloatWidth.isOneOf(FP64)) 2 else 1
+        if (getOutputDataWidth.isOneOf(FP64) || (!isOther && getInputDataWidthRaw.isOneOf(FP64))) 2
+        else 1
       }
     }
 
@@ -1448,7 +1434,10 @@ object Opcodes {
       def isBrev8(implicit op: UInt): Bool = false.B  // not supported yet
       def isRev8(implicit op: UInt): Bool = getOpClass === BITOP && getDataType === S2VDV && getOp === REV8
       def isAvg(implicit op: UInt): Bool = getOpClass === CADDER && getDataType === S2VDV && getOp.isOneOf(AADDU, AADD, ASUBU, ASUB)
-      def isAdder(implicit op: UInt): Bool = getOpClass === ADDER && getDataType === S2VDV && getOp.isOneOf(ADD, SUB, ADC, SBC)
+      def isAdder(implicit op: UInt): Bool = Mux1H(Seq(
+        (getOpClass === ADDER  && getDataType === S2VDV)             -> getOp.isOneOf(ADD, SUB, ADC, SBC),
+        (getOpClass === CADDER && getDataType.isOneOf(S2VDW, S2WDW)) -> getOp.isOneOf(WADDU, WADD, WSUBU, WSUB),
+      ))
     }
 
     object LitUtil {
