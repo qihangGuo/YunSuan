@@ -903,19 +903,6 @@ object Opcodes {
     def isI2F(implicit op: UInt): Bool = getCvtType === I2F
     def isOther(implicit op: UInt): Bool = getCvtType === OTHER
 
-    def isFpWiden(implicit op: UInt): Bool = isF2F && {
-      (getInputDataWidth === FP16 && getOutputDataWidth === FP32) ||
-      (getInputDataWidth === FP32 && getOutputDataWidth === FP64)
-    }
-    def isFpNarrow(implicit op: UInt): Bool = isF2F && {
-      (getInputDataWidth === FP64 && getOutputDataWidth === FP32) ||
-      (getInputDataWidth === FP32 && getOutputDataWidth === FP16)
-    }
-    def isFpCrossHigh(implicit op: UInt): Bool = isF2F &&
-      (getInputDataWidth === FP16 && getOutputDataWidth === FP64)
-    def isFpCrossLow(implicit op: UInt): Bool = isF2F &&
-      (getInputDataWidth === FP64 && getOutputDataWidth === FP16)
-
     def isFround(implicit op: UInt): Bool    = isF2F && op(4, 3) === rnd
     def isFroundNx(implicit op: UInt): Bool  = isF2F && op(4, 3) === rndnx
     def isFcvtMod(implicit op: UInt): Bool   = isF2I && op(4, 3) === F2SMOD
