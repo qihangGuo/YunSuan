@@ -6,7 +6,7 @@ import chisel3._
 import chisel3.util._
 import yunsuan.fpu.falu.FloatAdderV2Input
 import yunsuan.fpu.falu.utils._
-import yunsuan.vector.alu.VSew
+import yunsuan.vector.Common.VSew
 import yunsuan.FaddOpCode
 import yunsuan.fpu.fmul.utils.FMULToFADDCtrlBundle
 
