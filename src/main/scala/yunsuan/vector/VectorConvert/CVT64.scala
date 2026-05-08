@@ -579,8 +579,8 @@ class FP_INCVT(width: Int) extends Module {
 
     val result1H = Cat(
       expIsOnesSrc,
-      !expIsOnesSrc && !maybeSub && ofRounded && (rmin || (rm === RTO)),
-      !expIsOnesSrc && !maybeSub && ofRounded && !(rmin || (rm === RTO)),
+      !expIsOnesSrc && !maybeSub && ofRounded && (rmin || (rm === ROD)),
+      !expIsOnesSrc && !maybeSub && ofRounded && !(rmin || (rm === ROD)),
       !expIsOnesSrc && !maybeSub && !ofRounded,
       !expIsOnesSrc && maybeSub
     )
