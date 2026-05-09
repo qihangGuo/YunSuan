@@ -1752,6 +1752,7 @@ object Opcodes {
 
     def getOp(implicit op: UInt): UInt = op(3, 2)
     def getSew(implicit op: UInt): UInt = op(1, 0)
+    def getDataWidth(implicit op: UInt): UInt = op(1, 0)
     def isSigned(implicit op: UInt): Bool = getOp.isOneOf(DIV, REM)
     def isDiv(implicit op: UInt): Bool = getOp.isOneOf(DIVU, DIV)
 
