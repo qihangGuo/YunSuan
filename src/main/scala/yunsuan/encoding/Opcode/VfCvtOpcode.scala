@@ -36,4 +36,8 @@ object VfCvtOpcode {
   def vfncvt_rod_ffw    = "b11_010101".U(8.W)
   def vfncvt_rtz_xufw   = "b10_010110".U(8.W)
   def vfncvt_rtz_xfw    = "b10_010111".U(8.W)
+  def vfwcvtbf16_ffv    = "b11_001101".U(8.W)
+  def vfncvtbf16_ffw    = "b11_011101".U(8.W)
+  def fcvt_bf16_s       = "b11_010010".U(8.W)
+  def fcvt_s_bf16       = "b11_001010".U(8.W)
 }

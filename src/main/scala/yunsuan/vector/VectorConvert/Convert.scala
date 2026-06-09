@@ -3,6 +3,7 @@ package yunsuan.vector.VectorConvert
 import chisel3._
 import chisel3.util._
 import chisel3.util.experimental.decode._
+import yunsuan.VfcvtType
 import yunsuan.util._
 
 class VectorCvtIO(width: Int) extends Bundle {
@@ -24,10 +25,12 @@ class VectorCvt(xlen :Int) extends Module{
   val io = IO(new VectorCvtIO(xlen))
   val (fire, src, opType, sew, rm, isFpToVecInst, isFround, isFcvtmod) = (io.fire, io.src, io.opType, io.sew, io.rm, io.isFpToVecInst, io.isFround, io.isFcvtmod)
   val widen = opType(4, 3) // 0->single 1->widen 2->norrow => width of result
+  val isVfnCvtBf16 = opType === VfcvtType.vfncvtbf16_ffw
+  val isVfwCvtBf16 = opType === VfcvtType.vfwcvtbf16_ffv
 
   // input width 8， 16， 32， 64
   val input1H = Wire(UInt(4.W))
-  input1H := chisel3.util.experimental.decode.decoder(
+  val commonInput1H = chisel3.util.experimental.decode.decoder(
     widen ## sew,
     TruthTable(
       Seq(
@@ -46,10 +49,11 @@ class VectorCvt(xlen :Int) extends Module{
       BitPat("b0000")
     )
   )
+  input1H := Mux(isVfnCvtBf16, "b0100".U, Mux(isVfwCvtBf16, "b0010".U, commonInput1H))
 
   // output width 8， 16， 32， 64
   val output1H = Wire(UInt(4.W))
-  output1H := chisel3.util.experimental.decode.decoder(
+  val commonOutput1H = chisel3.util.experimental.decode.decoder(
     widen ## sew,
     TruthTable(
       Seq(
@@ -68,6 +72,7 @@ class VectorCvt(xlen :Int) extends Module{
       BitPat("b0000")
     )
   )
+  output1H := Mux(isVfnCvtBf16, "b0010".U, Mux(isVfwCvtBf16, "b0100".U, commonOutput1H))
   dontTouch(input1H)
   dontTouch(output1H)
 

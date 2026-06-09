@@ -4,7 +4,8 @@ import chisel3._
 import chisel3.util._
 import chisel3.util.experimental.decode._
 import yunsuan.util._
-import yunsuan.vector.VectorConvert.CVT64
+import yunsuan.VfcvtType
+import yunsuan.vector.VectorConvert.{CVT64, CVT_bf16}
 
 // Scalar Int to Float Convert.
 class I2fCvtIO extends Bundle{
@@ -91,11 +92,13 @@ class FpCvtIO(width: Int) extends Bundle {
   val result = Output(UInt(width.W))
   val fflags = Output(UInt(5.W))
 }
-class FPCVT(xlen :Int) extends Module{
+class FPCVT(xlen :Int, isI2F: Boolean = false) extends Module{
   val io = IO(new FpCvtIO(xlen))
   val (opType, sew) = (io.opType, io.sew)
-  val widen = opType(4, 3) // 0->single 1->widen 2->norrow => width of result
-  // input width 8， 16， 32， 64
+  val isScalarBf16Cvt = opType === VfcvtType.fcvt_bf16_s || opType === VfcvtType.fcvt_s_bf16
+  val isScalarBf16CvtOut = RegEnable(RegEnable(isScalarBf16Cvt, false.B, io.fire), false.B, GatedValidRegNext(io.fire))
+  val widen = opType(4, 3) // 0 -> single, 1 -> widen, 2 -> narrow
+  // Input width: 8, 16, 32, or 64 bits.
   val input1H = Wire(UInt(4.W))
   input1H := chisel3.util.experimental.decode.decoder(
     widen ## sew,
@@ -119,7 +122,7 @@ class FPCVT(xlen :Int) extends Module{
       BitPat("b0000")
     )
   )
-  // output width 8， 16， 32， 64
+  // Output width: 8, 16, 32, or 64 bits.
   val output1H = Wire(UInt(4.W))
   output1H := chisel3.util.experimental.decode.decoder(
     widen ## sew,
@@ -158,7 +161,24 @@ class FPCVT(xlen :Int) extends Module{
   fcvt.io.input1H := input1H
   fcvt.io.output1H := output1H
 
-  io.fflags := fcvt.io.fflags
-  io.result := fcvt.io.result
+  if (xlen >= 32) {
+    val bf16Cvt = Module(new CVT_bf16(xlen))
+    bf16Cvt.io.fire := io.fire
+    bf16Cvt.io.src := io.src
+    bf16Cvt.io.opType := io.opType
+    bf16Cvt.io.sew := io.sew
+    bf16Cvt.io.rm := io.rm
+    bf16Cvt.io.isFpToVecInst := io.isFpToVecInst
+    bf16Cvt.io.isFround := io.isFround
+    bf16Cvt.io.isFcvtmod := io.isFcvtmod
+    bf16Cvt.io.input1H := input1H
+    bf16Cvt.io.output1H := output1H
+
+    io.fflags := Mux(isScalarBf16CvtOut, bf16Cvt.io.fflags, fcvt.io.fflags)
+    io.result := Mux(isScalarBf16CvtOut, bf16Cvt.io.result, fcvt.io.result)
+  } else {
+    io.fflags := fcvt.io.fflags
+    io.result := fcvt.io.result
+  }
 
 }
