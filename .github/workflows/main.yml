@@ -4,7 +4,7 @@ on:
   push:
     branches: [ master ]
   pull_request:
-    branched: [ master ]
+    branches: [ master ]
 
 jobs:
   builtin-test:
@@ -22,6 +22,11 @@ jobs:
       - name: Cache
         id: cache
         uses: coursier/cache-action@v6
+
+      - name: Install Verilator and Math Libraries (GMP/MPFR)
+        run: |
+          sudo apt update
+          sudo apt install -y verilator libgmp-dev libmpfr-dev
 
       - name: Verilator
         run: sudo apt install verilator
