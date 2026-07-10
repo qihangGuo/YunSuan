@@ -625,7 +625,9 @@ class VfExp2UlpSpec
           BigInt(specials(rand.nextInt(specials.length)))
         else {
           val sign = if (rand.nextBoolean()) 0x8000 else 0x0000
-          val exp = (11 + rand.nextInt(10)) << 10 // exp range 11..20 → well-behaved exp2 region
+          val exp = (11 + rand.nextInt(
+            10
+          )) << 10 // exp range 11..20 → well-behaved exp2 region
           BigInt(sign | exp | rand.nextInt(1024))
         },
         rm
@@ -645,7 +647,7 @@ class VfExp2UlpSpec
       0x7f80, 0xff80, // ±Inf
       0x7fc0, 0xffc0, // NaN, SNaN
       0x0001, 0x0080, // subnormal, small subnormal
-      0x7f7f, 0xff7f  // ±max normal
+      0x7f7f, 0xff7f // ±max normal
     )
     val base = specials.map(b => (BigInt(b), rm))
 
@@ -797,7 +799,7 @@ class VfExp2UlpSpec
             else BigInt(ulp.bitLength)
           val threshold =
             if (width == 32) 13
-            else if (rm == 6) 2  // RTO: ULP ≤ 4 (log2_ULP ≤ 2) allowed
+            else if (rm == 6) 2 // RTO: ULP ≤ 4 (log2_ULP ≤ 2) allowed
             else 1
           (logBits, logBits > threshold)
         }
@@ -868,17 +870,19 @@ class VfExp2UlpSpec
 
   // ============  directed test ============
 
-  it should "directed exp2 of 0.125 121.994 107.992 -3.65 (FP16+FP32)" in {
+  it should "directed exp2 of 0.125 121.994 107.9999923706054687 -3.65 (FP16+FP32)" in {
     logSummary("[VfExp2UlpSpec] directed test starting")
     test(new VfExp2(64)).withAnnotations(
       Seq(VerilatorBackendAnnotation, VerilatorFlags(Seq()))
     ) { dut =>
-      val decimals = Seq(0.125, 121.994, 107.992, -3.65)
+      val decimals = Seq(0.125, 121.994, 107.9999923706054687, -3.65)
       val latency = VfExp2Pipe.latency
 
       logFileOnly("")
       logFileOnly("=" * 100)
-      logFileOnly("  Directed Test: exp2 of 0.125, 121.994, 107.992, -3.65")
+      logFileOnly(
+        "  Directed Test: exp2 of 0.125, 121.994, 107.9999923706054687, -3.65"
+      )
       logFileOnly("=" * 100)
 
       logFileOnly("")

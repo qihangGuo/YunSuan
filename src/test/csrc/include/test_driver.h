@@ -45,7 +45,12 @@ struct Vfexp2LaneStats {
   uint64_t log2_ulp_le_13 = 0;
   uint64_t ulp_le_4_rto = 0;
   uint64_t ulp_over_budget = 0;
-  uint64_t max_diff_metric = 0;
+  uint64_t max_ulp_by_rm[8] = {};
+};
+
+struct Vfexp2WorstEntry {
+  uint64_t src_bits, dut_bits, ref_bits, ulp;
+  uint8_t rm;
 };
 
 class TestDriver {
@@ -72,6 +77,7 @@ private:
   uint64_t vfexp2_logged_diffs;
   const uint64_t vfexp2_log_limit = 32;
   Vfexp2LaneStats vfexp2_stats[3];
+  Vfexp2WorstEntry vfexp2_worst[3][3];
 
   uint8_t pick_vfexp2_format() const;
   uint64_t gen_exp2_lane_bits(uint8_t format_mode);

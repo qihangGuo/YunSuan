@@ -709,8 +709,24 @@ void TestDriver::record_vfexp2_match(uint8_t format_mode, int lane, uint64_t src
     return;
   }
 
+  const uint64_t ulp = ulp_distance(dut_bits, ref_bits, width);
+  if (input.rm < 8) {
+    stats.max_ulp_by_rm[input.rm] = std::max(stats.max_ulp_by_rm[input.rm], ulp);
+  }
+  {
+    Vfexp2WorstEntry (&w)[3] = vfexp2_worst[format_mode - 1];
+    if (input.rm == RM_RNE && ulp > w[2].ulp) {
+      int pos = 2;
+      while (pos > 0 && ulp > w[pos - 1].ulp) pos--;
+      for (int j = 2; j > pos; j--) w[j] = w[j - 1];
+      w[pos].src_bits = src_bits;
+      w[pos].dut_bits = dut_bits;
+      w[pos].ref_bits = ref_bits;
+      w[pos].ulp = ulp;
+      w[pos].rm = input.rm;
+    }
+  }
   const uint64_t metric = vfexp2_metric(format_mode, dut_bits, ref_bits, width);
-  stats.max_diff_metric = std::max(stats.max_diff_metric, metric);
   const uint64_t budget = vfexp2_budget(format_mode, input.rm);
   if (format_mode == VFEXP2_MODE_FP32) {
     if (metric <= budget) stats.log2_ulp_le_13++;
@@ -853,27 +869,26 @@ void TestDriver::print_summary() const {
   for (uint8_t mode = VFEXP2_MODE_FP16; mode <= VFEXP2_MODE_FP32; mode++) {
     const Vfexp2LaneStats &stats = vfexp2_stats[mode - 1];
     if (stats.total == 0) continue;
-    if (mode == VFEXP2_MODE_FP32) {
-      printf("  [%s] total=%lu exact=%lu zeroEq=%lu nanEq=%lu log2ULP<=13=%lu ulpOverBudget=%lu maxLog2ULP=%lu\n",
-        vfexp2_format_name(mode),
-        stats.total,
-        stats.exact,
-        stats.zero_equivalent,
-        stats.nan_equivalent,
-        stats.log2_ulp_le_13,
-        stats.ulp_over_budget,
-        stats.max_diff_metric);
-    } else {
-      printf("  [%s] total=%lu exact=%lu zeroEq=%lu nanEq=%lu ulp<=1=%lu rto_ulp<=4=%lu ulpOverBudget=%lu maxULP=%lu\n",
-        vfexp2_format_name(mode),
-        stats.total,
-        stats.exact,
-        stats.zero_equivalent,
-        stats.nan_equivalent,
-        stats.ulp_le_1,
-        stats.ulp_le_4_rto,
-        stats.ulp_over_budget,
-        stats.max_diff_metric);
+    printf("  [%s] total=%lu exact=%lu zeroEq=%lu nanEq=%lu maxULP RNE=%lu RTZ=%lu RDN=%lu RUP=%lu RMM=%lu RTO=%lu\n",
+      vfexp2_format_name(mode),
+      stats.total,
+      stats.exact,
+      stats.zero_equivalent,
+      stats.nan_equivalent,
+      stats.max_ulp_by_rm[0],
+      stats.max_ulp_by_rm[1],
+      stats.max_ulp_by_rm[2],
+      stats.max_ulp_by_rm[3],
+      stats.max_ulp_by_rm[4],
+      stats.max_ulp_by_rm[6]);
+    const Vfexp2WorstEntry (&w)[3] = vfexp2_worst[mode - 1];
+    const int hexw = (mode == VFEXP2_MODE_FP32) ? 8 : 4;
+    for (int i = 0; i < 3 && w[i].ulp > 0; i++) {
+      printf("    Top%u ULP=%lu  src=0x%0*lx dut=0x%0*lx ref=0x%0*lx\n",
+        i + 1, w[i].ulp,
+        hexw, w[i].src_bits,
+        hexw, w[i].dut_bits,
+        hexw, w[i].ref_bits);
     }
   }
 }
