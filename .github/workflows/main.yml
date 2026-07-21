@@ -4,7 +4,7 @@ on:
   push:
     branches: [ master ]
   pull_request:
-    branches: [ master ]
+    branches: [ kunminghu-v3, v2r2a ]
 
 jobs:
   builtin-test:
